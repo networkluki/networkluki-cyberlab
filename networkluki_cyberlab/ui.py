@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from .forensics import analyze_file, inspect_binary
 from .network import tcp_scan, web_probe
 from .storage import Store
+from . import __version__
 
 LOGGER = logging.getLogger(__name__)
 MODULE_NAMES = {
@@ -158,7 +159,7 @@ class MainWindow(QMainWindow):
         self.run_buttons: list[QPushButton] = []
         self.input_widgets: list[QWidget] = []
         self.history_record: dict | None = None
-        self.setWindowTitle("NetworkLuki CyberLab · v0.1.1 MVP")
+        self.setWindowTitle(f"NetworkLuki CyberLab · v{__version__} MVP")
         self.resize(1240, 850)
         self.setMinimumSize(960, 700)
         self.setStyleSheet(STYLESHEET)
@@ -189,7 +190,7 @@ class MainWindow(QMainWindow):
             self.navigation.addItem(QListWidgetItem(name))
         self.navigation.currentRowChanged.connect(self._navigate)
         side.addWidget(self.navigation, 1)
-        side.addWidget(label("v0.1.1  ·  MVP", "eyebrow"))
+        side.addWidget(label(f"v{__version__}  ·  MVP", "eyebrow"))
         side.addWidget(label("Local results\nNo administrator privileges required", "footer", True))
         outer.addWidget(sidebar)
 
@@ -223,8 +224,15 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(scrollable(self._file_page(True)))
         self.pages.addWidget(scrollable(self._history_page()))
         body.addWidget(self.pages, 1)
-        footer = label("LOCAL WORKSPACE  /  Results stay on this computer. Network checks are started manually.", "footer")
-        footer.setContentsMargins(28, 12, 20, 15)
+        footer = QWidget()
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(28, 12, 20, 15)
+        self.footer_author = label("Skapat av Luki Hackwell", "footer")
+        self.footer_powered = label("Powered by networkluki.com", "footer")
+        self.footer_powered.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        footer_layout.addWidget(self.footer_author)
+        footer_layout.addStretch(1)
+        footer_layout.addWidget(self.footer_powered)
         body.addWidget(footer)
         outer.addLayout(body, 1)
         self.setCentralWidget(root)

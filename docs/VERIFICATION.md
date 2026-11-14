@@ -1,4 +1,12 @@
-# Verification — 0.1.1 MVP
+# Verification
+
+## 0.1.2 release checks
+
+On 2026-11-14, all 41 existing tests passed locally after the footer and version changes, using Linux x86_64, Python 3.12.14 and PySide6 6.12.0. The new isolated `--smoke-test` passed, and the footer screenshot was visually inspected. A local PyInstaller 6.22.3 build also passed the packaged desktop/footer/hash/SQLite/export smoke checks.
+
+The native release workflow separately builds Windows x64 and Ubuntu 22.04 amd64 packages. Publication is gated on source tests, frozen-runtime checks, and successful installation checks on both runners. The Linux installed-app check uses xcb under Xvfb. The release assets `build-verification-*.json` and `installation-verification-*.json` record the actual native outcomes; do not treat an uncompleted workflow as a passing test. These checks do not establish compatibility with every Windows/Linux desktop configuration. macOS is not tested by this workflow, and the binaries are unsigned.
+
+## Historical 0.1.1 MVP checks
 
 Performed on 2026-11-14 in Linux x86_64 (kernel 6.18.57), Python 3.12.14 and PySide6 6.12.0. The complete test suite was rerun after translating the interface and documentation into English.
 

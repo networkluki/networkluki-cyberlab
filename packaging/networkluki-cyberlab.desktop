@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NetworkLuki CyberLab
+Comment=Security research and static file analysis workbench
+Exec=networkluki-cyberlab
+Icon=networkluki-cyberlab
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true

@@ -10,6 +10,7 @@ import stat
 import sys
 import tempfile
 from datetime import datetime, timezone
+from . import __version__
 
 MAX_RESULT_BYTES = 2 * 1024 * 1024
 MAX_HISTORY_BYTES = 16 * 1024 * 1024
@@ -157,7 +158,7 @@ class Store:
         report = {
             "schema_version": 1,
             "application": "NetworkLuki CyberLab",
-            "application_version": "0.1.1",
+            "application_version": __version__,
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "evidence_note": "Local observation; not a signed or tamper-evident chain of custody.",
             "record": record,

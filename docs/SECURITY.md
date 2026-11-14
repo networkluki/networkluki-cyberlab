@@ -1,6 +1,6 @@
 # Security model
 
-NetworkLuki CyberLab 0.1.1 is a local, unprivileged desktop MVP. Use network functions only within your authorized scope. The application does not establish ownership or authorization and does not provide a security boundary against another process running as the same user.
+NetworkLuki CyberLab 0.1.2 is a local, unprivileged desktop MVP. Use network functions only within your authorized scope. The application does not establish ownership or authorization and does not provide a security boundary against another process running as the same user.
 
 ## Input and execution boundaries
 
