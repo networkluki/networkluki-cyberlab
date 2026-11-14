@@ -2,9 +2,9 @@
 
 ## Starting point
 
-Version 0.1.1 is an initial desktop application with an English interface and a shared codebase intended for Windows, Linux, and macOS. It includes TCP connection checks, HTTP/TLS observations, file hashing, basic binary inspection, and local result history. The goal is a unified workspace for penetration testing, security research, digital forensics, and reverse engineering.
+Version 0.1.2 is an initial desktop application with an English interface and a shared codebase intended for Windows, Linux, and macOS. It includes TCP connection checks, HTTP/TLS observations, file hashing, basic binary inspection, and local result history. The goal is a unified workspace for penetration testing, security research, digital forensics, and reverse engineering.
 
-Windows and macOS are intended targets but have not been tested for this release. Native installers are not included. Results from actual Linux checks must be reported separately from planned platform support.
+Version 0.1.2 adds a native Windows x64 and Debian/Ubuntu amd64 build workflow with installer verification and release assets. macOS remains unverified. Use the release's JSON verification reports to distinguish actual tested configurations from intended platform support.
 
 ## Architecture
 

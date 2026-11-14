@@ -1,0 +1,33 @@
+[Setup]
+AppId=NetworkLuki.CyberLab
+AppName=NetworkLuki CyberLab
+AppVersion=@VERSION@
+AppPublisher=Luki Hackwell
+AppPublisherURL=https://networkluki.com
+AppSupportURL=https://github.com/networkluki/networkluki-cyberlab/issues
+DefaultDirName={localappdata}\Programs\NetworkLuki CyberLab
+DefaultGroupName=NetworkLuki CyberLab
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0.17763
+OutputDir=@OUTPUT@
+OutputBaseFilename=NetworkLuki-CyberLab-@VERSION@-Setup-x64
+LicenseFile=@LICENSE@
+UninstallDisplayIcon={app}\networkluki-cyberlab.exe
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+DisableProgramGroupPage=yes
+CloseApplications=yes
+RestartApplications=no
+
+[Files]
+Source: "@SOURCE@\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{group}\NetworkLuki CyberLab"; Filename: "{app}\networkluki-cyberlab.exe"
+Name: "{group}\Uninstall NetworkLuki CyberLab"; Filename: "{uninstallexe}"
+
+[Run]
+Filename: "{app}\networkluki-cyberlab.exe"; Description: "Launch NetworkLuki CyberLab"; Flags: nowait postinstall skipifsilent

@@ -1,0 +1,140 @@
+name: Build Windows and Debian release
+
+on:
+  push:
+    branches: [codex/release-0.1.2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cyberlab-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sources:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Prepare verified corresponding sources and licenses
+        run: python tools/prepare_sources.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: third-party-licenses
+          path: build/third-party-licenses/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: corresponding-sources
+          path: |
+            dist/release/*.tar.xz
+            dist/release/third-party-sources.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  windows:
+    needs: sources
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14.10'
+          architecture: x64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: third-party-licenses
+          path: build/third-party-licenses
+      - name: Install Python build dependencies
+        run: python -m pip install . pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.10
+      - name: Test application
+        run: python -m unittest discover -s tests -v
+      - name: Build and smoke-test Windows package
+        run: python tools/build_release.py --target windows
+      - name: Verify installer and installed application
+        run: python tools/verify_install.py --target windows
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-windows
+          path: dist/release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  debian:
+    needs: sources
+    runs-on: ubuntu-24.04
+    container: debian:13-slim
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install Debian build and desktop dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git python3 python3-venv libpython3.13 libglib2.0-0t64 libdbus-1-3 libfontconfig1 libsm6 libice6 binutils sudo xvfb xauth libegl1 libgl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: third-party-licenses
+          path: build/third-party-licenses
+      - name: Create isolated Python build environment
+        run: python3 -m venv .venv
+      - name: Install Python build dependencies
+        run: .venv/bin/python -m pip install . pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.10
+      - name: Test application
+        run: .venv/bin/python -m unittest discover -s tests -v
+      - name: Build and smoke-test Debian package
+        run: .venv/bin/python tools/build_release.py --target deb
+      - name: Verify installer and installed application
+        run: .venv/bin/python tools/verify_install.py --target deb
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-deb
+          path: dist/release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    needs: [sources, windows, debian]
+    if: github.ref == 'refs/heads/codex/release-0.1.2' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          path: dist/release
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: corresponding-sources
+          path: dist/release
+      - name: Publish verified release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/publish_release.py

@@ -1,16 +1,27 @@
 # NetworkLuki CyberLab
 
-**Version 0.1.1 — desktop MVP**
+**Version 0.1.2 — desktop MVP**
 
 ![NetworkLuki CyberLab overview](docs/overview.png)
 
 An open-source desktop workbench with an English interface for scoped network observations, web/TLS inspection, file hashing, and static binary inspection. Results stay on your computer and can be grouped by project and exported as JSON.
 
-The intended desktop targets are **Windows, Linux, and macOS**, using Python and Qt for Python. This release is an initial implementation, not a complete penetration-testing suite or a claim of being the “most advanced” security tool. Windows and macOS have not been tested for this release; see the [verification notes](docs/VERIFICATION.md) for the Linux checks actually performed. Native installers are not included.
+The intended desktop targets are **Windows, Linux, and macOS**, using Python and Qt for Python. This release is an initial implementation, not a complete penetration-testing suite or a claim of being the “most advanced” security tool. The release workflow builds Windows x64 and Debian 13 amd64 installers and verifies the installed applications before publishing them. macOS remains a source-only target without platform verification. See the [verification notes](docs/VERIFICATION.md) and the JSON reports attached to each release.
+
+## Native installers
+
+Download the `.exe` or `.deb` from [GitHub Releases](https://github.com/networkluki/networkluki-cyberlab/releases). These packages include Python and Qt. The Windows installer is unsigned and installs for the current user. The Debian package requires administrator privileges to install, then runs as a normal desktop application.
+
+```bash
+sudo apt install ./networkluki-cyberlab_0.1.2_amd64.deb
+networkluki-cyberlab
+```
+
+The footer displays `Skapat av Luki Hackwell` on the left and `Powered by networkluki.com` on the right. The rest of the application interface is English.
 
 ## Implemented modules
 
-| Module | Available in 0.1.1 | Boundaries |
+| Module | Available in 0.1.2 | Boundaries |
 | --- | --- | --- |
 | Network | TCP connection checks against one explicit IPv4 or IPv6 address | Up to 128 selected ports, at most 8 workers, 0.6-second connection timeout per port; no host discovery or service identification |
 | Web / TLS | One HTTP `HEAD` request, response headers, contextual security-header observations, verified HTTPS metadata | No redirects, body analysis, proxy inheritance, authentication, or `GET` fallback; first validated DNS address is pinned for the connection |
