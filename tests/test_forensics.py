@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -83,6 +84,36 @@ class ForensicTests(unittest.TestCase):
                 writer.write(b"changed")
             with self.assertRaisesRegex(RuntimeError, "changed"):
                 forensics._verify_unchanged(source, stream, before)
+
+    def test_windows_ctime_semantics_preserve_descriptor_change_detection(self):
+        path = self.fixture()
+        actual = path.lstat()
+        values = {field: getattr(actual, field) for field in forensics._SNAPSHOT_FIELDS}
+        values["st_birthtime_ns"] = 100
+        by_path = SimpleNamespace(**(values | {"st_ctime_ns": 100}))
+        by_handle = SimpleNamespace(**(values | {"st_ctime_ns": 200}))
+        changed_handle = SimpleNamespace(**(values | {"st_ctime_ns": 300}))
+        with (
+            mock.patch.object(forensics, "_IS_WINDOWS", True),
+            mock.patch.object(Path, "lstat", return_value=by_path),
+            mock.patch.object(forensics.os, "fstat", side_effect=[by_handle, by_handle, changed_handle]),
+        ):
+            with forensics._open_regular(str(path)) as (source, stream, before):
+                forensics._verify_unchanged(source, stream, before)
+                with self.assertRaisesRegex(RuntimeError, "File changed during analysis"):
+                    forensics._verify_unchanged(source, stream, before)
+
+    def test_change_before_open_is_rejected_with_numeric_diagnostics(self):
+        path = self.fixture()
+        original_open = os.open
+
+        def change_then_open(*args, **kwargs):
+            path.write_bytes(b"replacement content")
+            return original_open(*args, **kwargs)
+
+        with mock.patch.object(forensics.os, "open", side_effect=change_then_open):
+            with self.assertRaisesRegex(RuntimeError, r"st_size=7->19"):
+                forensics.analyze_file(str(path))
 
     def test_cancelled_before_io(self):
         cancel = threading.Event()

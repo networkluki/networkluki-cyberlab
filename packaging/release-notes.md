@@ -14,7 +14,7 @@ The Windows executable is unsigned. Windows x64 and Linux amd64 are the binary t
 
 Corresponding Qt/PySide source archives are included as separate assets for the bundled third-party components. Their licenses remain separate from the application's MIT license. `SOURCE_COMMIT.txt` identifies the exact application source commit.
 
-### Install on Debian / Ubuntu
+### Install on Debian 13
 
 From the directory containing the downloaded package:
 

@@ -1,6 +1,6 @@
 # Native release builds
 
-Build each target on its own operating system. The workflow uses Windows Server 2025 x64 with Python 3.12 and a Debian 13 amd64 container with its distribution Python 3.13. The Linux package records the builder's glibc baseline, so building on a newer distribution can produce a package requiring that newer glibc.
+Build each target on its own operating system. The workflow uses Windows Server 2025 x64 with Python 3.14.10 and a Debian 13 amd64 container with its distribution Python 3.13. The Linux package records the builder's glibc baseline, so building on a newer distribution can produce a package requiring that newer glibc.
 
 ```text
 python -m pip install . pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.10

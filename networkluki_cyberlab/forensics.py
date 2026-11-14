@@ -24,6 +24,8 @@ MAX_STRING_CHARS = 240
 MIN_STRING_CHARS = 6
 CHUNK_BYTES = 1024 * 1024
 SIGNATURE_BYTES = 4096
+_IS_WINDOWS = os.name == "nt"
+_SNAPSHOT_FIELDS = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
 
 
 def _check_cancel(cancel: threading.Event | None) -> None:
@@ -31,14 +33,23 @@ def _check_cancel(cancel: threading.Event | None) -> None:
         raise RuntimeError("Operation cancelled")
 
 
-def _snapshot(info: os.stat_result) -> tuple[int, ...]:
-    return (
-        info.st_dev,
-        info.st_ino,
-        info.st_mode,
-        info.st_size,
-        info.st_mtime_ns,
-        info.st_ctime_ns,
+def _snapshot(info: os.stat_result, *, cross_method: bool = False) -> tuple[int, ...]:
+    # CPython Windows lstat and fstat disagree on ctime semantics (gh-157671).
+    # Compare creation time across methods, but retain descriptor change time
+    # when checking fstat before/after analysis.
+    fields = _SNAPSHOT_FIELDS
+    if cross_method and _IS_WINDOWS and hasattr(info, "st_birthtime_ns"):
+        fields = (*fields[:-1], "st_birthtime_ns")
+    return tuple(getattr(info, field) for field in fields)
+
+
+def _snapshot_changes(before: os.stat_result, after: os.stat_result) -> str:
+    fields = _SNAPSHOT_FIELDS
+    if _IS_WINDOWS and hasattr(before, "st_birthtime_ns") and hasattr(after, "st_birthtime_ns"):
+        fields = (*fields[:-1], "st_birthtime_ns")
+    return ", ".join(
+        f"{field}={getattr(before, field)}->{getattr(after, field)}"
+        for field in fields if getattr(before, field) != getattr(after, field)
     )
 
 
@@ -65,8 +76,11 @@ def _open_regular(path: str) -> Iterator[tuple[Path, BinaryIO, os.stat_result]]:
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
             raise ValueError("Only regular files can be analyzed.")
-        if _snapshot(opened) != _snapshot(before):
-            raise RuntimeError("File changed before analysis; select it again.")
+        if _snapshot(opened, cross_method=True) != _snapshot(before, cross_method=True):
+            raise RuntimeError(
+                "File changed before analysis; select it again. "
+                f"Changed metadata: {_snapshot_changes(before, opened)}"
+            )
         # On Windows O_NOFOLLOW is unavailable; the lstat/fstat check is best
         # effort and does not establish a symlink-free parent directory chain.
         with os.fdopen(descriptor, "rb") as stream:
@@ -83,7 +97,10 @@ def _verify_unchanged(source: Path, stream: BinaryIO, before: os.stat_result) ->
         current_path = source.lstat()
     except OSError as exc:
         raise RuntimeError("File path changed during analysis; result discarded.") from exc
-    if _snapshot(after) != _snapshot(before) or _snapshot(current_path) != _snapshot(before):
+    if (
+        _snapshot(after) != _snapshot(before)
+        or _snapshot(current_path, cross_method=True) != _snapshot(before, cross_method=True)
+    ):
         raise RuntimeError("File changed during analysis; result discarded.")
 
 
