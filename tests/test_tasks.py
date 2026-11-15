@@ -1,6 +1,7 @@
 """Task persistence, project boundaries and non-destructive migration checks."""
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import date
 import json
 import os
@@ -29,7 +30,7 @@ class TaskTests(unittest.TestCase):
     def legacy_database(self):
         legacy_directory = self.directory.parent / "legacy"
         legacy_directory.mkdir()
-        with sqlite3.connect(legacy_directory / "results.sqlite3") as connection:
+        with closing(sqlite3.connect(legacy_directory / "results.sqlite3")) as connection, connection:
             connection.execute("CREATE TABLE results (id INTEGER PRIMARY KEY AUTOINCREMENT, "
                                "project TEXT NOT NULL, module TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL)")
             connection.execute("INSERT INTO results(project, module, created_at, payload) VALUES (?, ?, ?, ?)",
@@ -61,7 +62,7 @@ class TaskTests(unittest.TestCase):
         backup_bytes = backup.read_bytes()
         if os.name == "posix":
             self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
-        with sqlite3.connect(backup) as connection:
+        with closing(sqlite3.connect(backup)) as connection:
             self.assertEqual(connection.execute("SELECT payload FROM results").fetchone()[0], json.dumps({"status": 200}))
             self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name = 'tasks'").fetchone())
         before = migrated.list_results("old lab")
@@ -86,7 +87,7 @@ class TaskTests(unittest.TestCase):
             writer.commit()
             self.assertTrue((legacy_directory / "results.sqlite3-wal").is_file())
             Store(legacy_directory)
-            with sqlite3.connect(legacy_directory / "results.pre-workspace.sqlite3") as backup:
+            with closing(sqlite3.connect(legacy_directory / "results.pre-workspace.sqlite3")) as backup:
                 payloads = [json.loads(row[0]) for row in backup.execute("SELECT payload FROM results ORDER BY id")]
                 self.assertEqual(payloads, [{"status": 200}, {"status": 204}])
                 self.assertIsNone(backup.execute("SELECT name FROM sqlite_master WHERE name = 'tasks'").fetchone())
@@ -98,7 +99,7 @@ class TaskTests(unittest.TestCase):
         with patch("networkluki_cyberlab.storage.os.link", side_effect=OSError("Backup storage unavailable")):
             with self.assertRaisesRegex(OSError, "Backup storage unavailable"):
                 Store(legacy_directory)
-        with sqlite3.connect(legacy_directory / "results.sqlite3") as connection:
+        with closing(sqlite3.connect(legacy_directory / "results.sqlite3")) as connection:
             self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name = 'tasks'").fetchone())
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM results").fetchone()[0], 1)
         self.assertFalse((legacy_directory / "results.pre-workspace.sqlite3").exists())
@@ -111,7 +112,7 @@ class TaskTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             Store(legacy_directory)
         self.assertEqual(backup.read_bytes(), b"Existing backup to preserve")
-        with sqlite3.connect(legacy_directory / "results.sqlite3") as connection:
+        with closing(sqlite3.connect(legacy_directory / "results.sqlite3")) as connection:
             self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name = 'tasks'").fetchone())
 
     def test_symlinked_backup_is_rejected_without_following_it(self):

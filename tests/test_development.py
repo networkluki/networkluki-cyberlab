@@ -1,11 +1,13 @@
 """Generated fixtures for bounded, non-executing development inspection."""
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 from pathlib import Path
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -64,6 +66,69 @@ class DevelopmentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             development.inspect_project(str(project / "linked"))
 
+    def test_fallback_traverses_when_cached_entry_identity_is_zero(self):
+        nested = self.root / "src" / "tests"
+        nested.mkdir(parents=True)
+        (nested.parent / "main.py").write_text("pass")
+        (nested / "test_example.py").write_text("pass")
+        original_scandir = os.scandir
+
+        def windows_entry(entry):
+            def cached_stat(*, follow_symlinks=True):
+                current = entry.stat(follow_symlinks=follow_symlinks)
+                return SimpleNamespace(st_mode=current.st_mode, st_dev=0, st_ino=0,
+                                       st_nlink=0, st_file_attributes=getattr(current, "st_file_attributes", 0))
+            return SimpleNamespace(name=entry.name, stat=cached_stat)
+
+        @contextmanager
+        def windows_scandir(path):
+            with original_scandir(path) as entries:
+                yield (windows_entry(entry) for entry in entries)
+
+        with patch.object(development, "_DIRECTORY_FDS", False), \
+             patch.object(development.os, "scandir", windows_scandir):
+            result = development.inspect_project(str(self.root))
+            with patch.object(development, "MAX_PROJECT_DEPTH", 1):
+                bounded = development.inspect_project(str(self.root))
+        self.assertEqual(result["languages"], {"Python": 2})
+        self.assertEqual(result["directories_count"], 2)
+        self.assertEqual(result["skipped"].get("changed_directories", 0), 0)
+        self.assertTrue(result["tests_found"])
+        self.assertEqual(bounded["languages"], {"Python": 1})
+        self.assertTrue(bounded["truncated"])
+        self.assertEqual(bounded["skipped"]["depth_limit_directories"], 1)
+
+    def test_fallback_rejects_directory_replaced_by_link_before_recheck(self):
+        project = self.root / "project"
+        nested = project / "nested"
+        nested.mkdir(parents=True)
+        external = self.root / "external"
+        external.mkdir()
+        (external / "outside.rs").write_text("must not be inventoried")
+        prepared_link = self.root / "prepared-link"
+        try:
+            prepared_link.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("Symlink creation unavailable")
+        original_lstat = Path.lstat
+        checks = 0
+
+        def swap_before_recheck(path, *args, **kwargs):
+            nonlocal checks
+            if path == nested:
+                checks += 1
+                if checks == 2:
+                    nested.rename(self.root / "previous")
+                    prepared_link.rename(nested)
+            return original_lstat(path, *args, **kwargs)
+
+        with patch.object(development, "_DIRECTORY_FDS", False), \
+             patch.object(Path, "lstat", swap_before_recheck):
+            result = development.inspect_project(str(project))
+        self.assertEqual(checks, 2)
+        self.assertNotIn("Rust", result["languages"])
+        self.assertEqual(result["skipped"]["changed_directories"], 1)
+
     def test_inventory_entry_and_depth_limits_are_explicit(self):
         for index in range(5):
             self.source("pass", f"file{index}.py")
@@ -113,9 +178,10 @@ class DevelopmentTests(unittest.TestCase):
             "requests.get('DO-NOT-EXPOSE-URL', verify=False)\n"
         )
         path = self.source(text)
+        source_bytes = path.read_bytes()
         before = path.stat().st_mtime_ns
         result = development.inspect_source(str(path))
-        self.assertEqual(result["sha256"], hashlib.sha256(text.encode()).hexdigest())
+        self.assertEqual(result["sha256"], hashlib.sha256(source_bytes).hexdigest())
         self.assertEqual(result["finding_count"], 4)
         self.assertEqual([f["line"] for f in result["findings"]], [2, 3, 4, 5])
         self.assertEqual({f["classification"] for f in result["findings"]}, {"review_required"})
@@ -123,7 +189,19 @@ class DevelopmentTests(unittest.TestCase):
         self.assertTrue(all(len(f["evidence"]) <= 240 for f in result["findings"]))
         self.assertFalse(result["executed_project_code"])
         self.assertEqual(path.read_text(), text)
+        self.assertEqual(path.read_bytes(), source_bytes)
         self.assertEqual(path.stat().st_mtime_ns, before)
+
+    def test_source_preserves_crlf_bytes_in_hash_and_line_references(self):
+        source_bytes = b"password = 'REDACT-ME'\r\neval('REDACT-THIS-TOO')\r\n"
+        path = self.root / "windows-newlines.py"
+        path.write_bytes(source_bytes)
+        result = development.inspect_source(str(path))
+        self.assertEqual(result["sha256"], hashlib.sha256(source_bytes).hexdigest())
+        self.assertEqual(result["size_bytes"], len(source_bytes))
+        self.assertEqual([finding["line"] for finding in result["findings"]], [1, 2])
+        self.assertNotIn("REDACT-", json.dumps(result))
+        self.assertEqual(path.read_bytes(), source_bytes)
 
     def test_comments_strings_and_lookalike_names_are_not_calls(self):
         path = self.source(

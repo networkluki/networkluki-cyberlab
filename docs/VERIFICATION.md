@@ -4,7 +4,7 @@
 
 Executed on 2026-11-15 with Linux x86_64, Python 3.12.14 and PySide6 6.12.0:
 
-- `python -m unittest discover -s tests -v`: **100 tests passed**, no skips. This includes the previous 43 regressions and 57 added tests across tasks/migration, operations, development, AI, headless CLI and workspace UI.
+- `python -m unittest discover -s tests -v`: **106 tests passed**, no skips. This includes the previous 43 regressions and 63 added tests across tasks/migration, operations, development, AI, headless CLI and workspace UI.
 - Task persistence, project boundaries, state changes, record links, date validation and capacity are covered. The migration tests verify a private SQLite backup including committed WAL records, no overwrite, and unchanged legacy schema when backup publication fails.
 - Operations tests use generated snapshot/log fixtures and a real local system snapshot; no remote machine is contacted. The headless CLI runs with site packages disabled and an invalid Qt platform setting, then refuses to overwrite its output.
 - Development tests exercise bounded inventory, Python AST signals, redacted evidence, cancellation, changed-file rejection and a directory-to-symlink swap. Inspected source is never executed.
@@ -12,6 +12,8 @@ Executed on 2026-11-15 with Linux x86_64, Python 3.12.14 and PySide6 6.12.0:
 - Eight new offscreen GUI integration tests cover task persistence, explicit evidence preview, consent invalidation, model-list isolation, unverified plain-text output, real snapshot/source workers and project switching.
 - `--smoke-test` passed desktop startup, both footer labels/placement, hashing, SQLite, JSON export, tasks, system snapshot and development checks.
 - Visually inspected the rendered overview at 1200 × 850 and all four new workspaces at 960 × 700. Pages scroll vertically; the footer remains visible. These were Qt offscreen renders, not a native desktop session.
+
+The first native preview run passed Debian installation checks and exposed Windows issues. The follow-up fixes use fresh non-following path metadata instead of Windows' zero-valued cached directory identities, close SQLite test fixture connections explicitly, hash actual CRLF file bytes, and poll response reads for portable AI cancellation/deadlines. Six new regressions cover fallback traversal/link substitution, CRLF source evidence, stalled responses, delayed reads and socket ownership. The final local suite above includes these fixes. See [Python DirEntry.stat documentation](https://docs.python.org/3.14/library/os.html#os.DirEntry.stat), checked 2026-11-15.
 
 The branch build workflow separately builds and installs Windows x64 and Debian 13 amd64 packages. Until its result is recorded, these local checks do not establish that the new installers pass. Branch builds upload CI artifacts and do not publish a 0.2.0 release automatically. The published 0.1.2 installers remain a separate version.
 

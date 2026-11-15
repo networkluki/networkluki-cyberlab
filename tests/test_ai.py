@@ -113,7 +113,8 @@ class AiTests(unittest.TestCase):
                 self.assertEqual(len(requests), 1)
 
     def test_response_shape_json_and_size_are_checked(self):
-        fixtures = [b'{"models":NaN}', b'{"models":[],"models":[]}', b'[]', {"models": "bad"}, {"models": [{}] * 129}]
+        fixtures = [b'{"models":NaN}', b'{"models":[],"number":1e999}', b'{"models":[],"models":[]}',
+                    b'[]', {"models": "bad"}, {"models": [{}] * 129}]
         for payload in fixtures:
             with self.subTest(payload=str(payload)[:30]), server(lambda h, b: respond(h, payload)) as (endpoint, requests):
                 with self.assertRaises(ValueError):
@@ -170,25 +171,91 @@ class AiTests(unittest.TestCase):
 
     def test_cancellation_interrupts_response_body(self):
         started_reading = threading.Event()
+        release_server = threading.Event()
         cancel = threading.Event()
+        cancelled_at = []
+        read_response = ai._Response.read
+        def read_after_cancellation(response, amount=None):
+            # getresponse() has parsed the headers and closed the original
+            # HTTP/1.0 connection socket before this body read can start.
+            started_reading.set()
+            self.assertTrue(cancel.wait(1), "Cancellation trigger did not run")
+            return read_response(response, amount)
         def callback(handler, body):
             handler.send_response(200)
             handler.send_header("Content-Type", "application/json")
             handler.send_header("Content-Length", "100")
             handler.end_headers()
-            started_reading.set()
-            time.sleep(0.8)
+            release_server.wait(2)
         def trigger():
-            started_reading.wait(1)
+            if not started_reading.wait(1):
+                return
+            cancelled_at.append(time.monotonic())
             cancel.set()
-        with server(callback) as (endpoint, requests):
+        with server(callback) as (endpoint, requests), patch.object(ai._Response, "read", read_after_cancellation):
             timer = threading.Thread(target=trigger, daemon=True)
             timer.start()
-            before = time.monotonic()
-            with self.assertRaisesRegex(RuntimeError, "cancelled"):
-                ai.list_models(endpoint, cancel)
-            self.assertLess(time.monotonic() - before, 0.5)
-            timer.join(1)
+            try:
+                with self.assertRaisesRegex(RuntimeError, "cancelled"):
+                    ai.list_models(endpoint, cancel)
+                self.assertTrue(cancelled_at)
+                self.assertLess(time.monotonic() - cancelled_at[0], 0.5)
+            finally:
+                release_server.set()
+                timer.join(1)
+
+    def test_deadline_interrupts_stalled_body(self):
+        release_server = threading.Event()
+        def callback(handler, body):
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", "100")
+            handler.end_headers()
+            release_server.wait(2)
+        with server(callback) as (endpoint, requests), patch.object(ai, "REQUEST_TIMEOUT", 0.1):
+            started = time.monotonic()
+            try:
+                with self.assertRaises(TimeoutError):
+                    ai.list_models(endpoint)
+                self.assertLess(time.monotonic() - started, 0.4)
+            finally:
+                release_server.set()
+
+    def test_receive_timeouts_do_not_corrupt_delayed_headers_or_body(self):
+        def callback(handler, body):
+            handler.wfile.write(b"HTTP/1.0 200 OK\r\nContent-Type: application/")
+            handler.wfile.flush()
+            time.sleep(0.15)
+            handler.wfile.write(b"json\r\nContent-Length: 14\r\n\r\n{\"models\":")
+            handler.wfile.flush()
+            time.sleep(0.15)
+            handler.wfile.write(b" []}")
+        with server(callback) as (endpoint, requests), patch.object(ai, "READ_POLL_INTERVAL", 0.01):
+            self.assertEqual(ai.list_models(endpoint)["models"], [])
+
+    def test_response_socket_duplicate_closes_on_success_and_errors(self):
+        raw_socket = ai.socket.socket
+        duplicates = []
+        class RecordingSocket(raw_socket):
+            def dup(self):
+                duplicate = super().dup()
+                duplicates.append(duplicate)
+                return duplicate
+        fixtures = [lambda h, b: respond(h, b'{"models":[]}'),
+                    lambda h, b: respond(h, b'{"models":NaN}'),
+                    lambda h, b: respond(h, b'[]'),
+                    lambda h, b: h.wfile.write(b"invalid HTTP status\r\n\r\n"),
+                    lambda h, b: h.wfile.write(b"HTTP/1.0 200 OK\r\nX-Large: " + b"x" * ai.MAX_HEADER_BYTES + b"\r\n\r\n")]
+        for callback in fixtures:
+            duplicates.clear()
+            with server(callback) as (endpoint, requests):
+                with patch.object(ai.socket, "socket", RecordingSocket):
+                    try:
+                        ai.list_models(endpoint)
+                    except (ValueError, RuntimeError):
+                        pass
+                self.assertTrue(duplicates)
+                self.assertTrue(all(sock.fileno() == -1 for sock in duplicates))
 
 
 if __name__ == "__main__":

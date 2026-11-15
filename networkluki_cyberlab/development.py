@@ -77,8 +77,12 @@ def inspect_project(path: str, cancel: threading.Event | None = None) -> dict:
                         state["truncated"] = True
                         return
                     state["entries_examined"] += 1
+                    child = directory / entry.name
                     try:
-                        entry_info = entry.stat(follow_symlinks=False)
+                        # Windows DirEntry.stat caches zero device/inode values.
+                        # Use fresh non-following path metadata on the fallback
+                        # so both identity checks below describe real file IDs.
+                        entry_info = entry.stat(follow_symlinks=False) if descriptor is not None else child.lstat()
                     except OSError:
                         skipped["unreadable_entries"] += 1
                         continue
@@ -86,7 +90,6 @@ def inspect_project(path: str, cancel: threading.Event | None = None) -> dict:
                         skipped["links_or_junctions"] += 1
                         continue
                     item_relative = relative / entry.name
-                    child = directory / entry.name
                     if stat.S_ISDIR(entry_info.st_mode):
                         if entry.name in SKIP_DIRECTORIES:
                             skipped["excluded_directories"] += 1

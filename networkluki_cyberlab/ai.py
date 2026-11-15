@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import http.client
+import io
 import json
+import math
 import re
 import socket
 import threading
@@ -19,6 +21,7 @@ from urllib.parse import urlsplit
 DEFAULT_ENDPOINT = "http://127.0.0.1:11434"
 REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 3.0
+READ_POLL_INTERVAL = 0.1
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_HEADER_BYTES = 65536
 MAX_EVIDENCE_BYTES = 24000
@@ -121,7 +124,58 @@ class _HeaderBudget:
         return getattr(self.stream, name)
 
 
+class _DeadlineReader(io.RawIOBase):
+    """Retry raw receives without poisoning a socket.makefile timeout buffer."""
+
+    def __init__(self, sock, deadline, cancel):
+        super().__init__()
+        self.sock = sock
+        self.deadline = deadline
+        self.cancel = cancel
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        while True:
+            remaining = _check_deadline(self.deadline, self.cancel)
+            self.sock.settimeout(min(READ_POLL_INTERVAL, remaining))
+            try:
+                count = self.sock.recv_into(buffer)
+            except socket.timeout:
+                continue
+            _check_deadline(self.deadline, self.cancel)
+            return count
+
+    def close(self):
+        try:
+            self.sock.close()
+        finally:
+            super().close()
+
+
+class _ResponseSocket:
+    def __init__(self, sock, deadline, cancel):
+        self.sock = sock
+        self.deadline = deadline
+        self.cancel = cancel
+
+    def makefile(self, mode):
+        # HTTPConnection may close its socket after headers. The response owns
+        # this duplicate, and checks cancellation even if shutdown on another
+        # thread does not wake a pending receive on the current platform.
+        duplicate = self.sock.dup()
+        try:
+            return io.BufferedReader(_DeadlineReader(duplicate, self.deadline, self.cancel))
+        except BaseException:
+            duplicate.close()
+            raise
+
+
 class _Response(http.client.HTTPResponse):
+    def __init__(self, sock, *args, deadline, cancel, **kwargs):
+        super().__init__(_ResponseSocket(sock, deadline, cancel), *args, **kwargs)
+
     def begin(self):
         original = self.fp
         wrapper = _HeaderBudget(original)
@@ -135,6 +189,13 @@ class _Response(http.client.HTTPResponse):
 
 def _reject_constant(value: str):
     raise ValueError("Non-finite JSON values are not accepted.")
+
+
+def _finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("Non-finite JSON values are not accepted.")
+    return number
 
 
 def _unique_pairs(pairs):
@@ -154,7 +215,8 @@ def _request(endpoint: str, method: str, path: str, payload: dict | None,
     finished = threading.Event()
     sock = socket.socket(socket.AF_INET6 if host == "::1" else socket.AF_INET, socket.SOCK_STREAM)
     connection = http.client.HTTPConnection(host, port)
-    connection.response_class = _Response
+    connection.response_class = lambda *args, **kwargs: _Response(
+        *args, deadline=deadline, cancel=cancel, **kwargs)
     response = None
 
     def interrupt() -> None:
@@ -202,7 +264,8 @@ def _request(endpoint: str, method: str, path: str, payload: dict | None,
             if len(received) > MAX_RESPONSE_BYTES:
                 raise ValueError("The local AI response exceeds the size limit.")
         try:
-            result = json.loads(received.decode("utf-8"), parse_constant=_reject_constant, object_pairs_hook=_unique_pairs)
+            result = json.loads(received.decode("utf-8"), parse_constant=_reject_constant,
+                                parse_float=_finite_float, object_pairs_hook=_unique_pairs)
         except (ValueError, UnicodeError, RecursionError) as exc:
             raise ValueError("Local Ollama returned malformed JSON.") from exc
         if not isinstance(result, dict):
