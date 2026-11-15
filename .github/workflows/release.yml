@@ -2,7 +2,7 @@ name: Build Windows and Debian release
 
 on:
   push:
-    branches: [codex/release-0.1.2]
+    branches: [codex/release-0.1.2, codex/workspace-0.2.0]
   workflow_dispatch:
 
 permissions:

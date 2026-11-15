@@ -1,16 +1,18 @@
 # NetworkLuki CyberLab
 
-**Version 0.1.2 — desktop MVP**
+**Version 0.2.0 — workspace preview**
 
 ![NetworkLuki CyberLab overview](docs/overview.png)
 
-An open-source desktop workbench with an English interface for scoped network observations, web/TLS inspection, file hashing, and static binary inspection. Results stay on your computer and can be grouped by project and exported as JSON.
+An open-source desktop workspace with an English interface for **daily tasks, server observations, and development review**, with an optional AI assistant. Scoped network checks, web/TLS inspection, file hashing, static binary inspection, and project-based JSON history remain available.
 
-The intended desktop targets are **Windows, Linux, and macOS**, using Python and Qt for Python. This release is an initial implementation, not a complete penetration-testing suite or a claim of being the “most advanced” security tool. The release workflow builds Windows x64 and Debian 13 amd64 installers and verifies the installed applications before publishing them. macOS remains a source-only target without platform verification. See the [verification notes](docs/VERIFICATION.md) and the JSON reports attached to each release.
+The intended desktop targets are **Windows, Linux, and macOS**, using Python and Qt for Python. This is a bounded workspace preview, not a complete penetration-testing suite or a claim of being the “most advanced” security tool. The `codex/workspace-0.2.0` branch is configured to build Windows x64 and Debian 13 amd64 installers as CI artifacts; it does not automatically publish a release. macOS remains a source-only target without platform verification. See the [verification notes](docs/VERIFICATION.md) for checks actually performed.
 
 ## Native installers
 
-Download the `.exe` or `.deb` from [GitHub Releases](https://github.com/networkluki/networkluki-cyberlab/releases). These packages include Python and Qt. The Windows installer is unsigned and installs for the current user. The Debian package requires administrator privileges to install, then runs as a normal desktop application.
+The existing published release is **0.1.2**, available from [GitHub Releases](https://github.com/networkluki/networkluki-cyberlab/releases). It contains the earlier security workbench, without the new workspace pages. For 0.2.0 preview installers, use the artifacts from a successful workspace-branch [Actions run](https://github.com/networkluki/networkluki-cyberlab/actions) and inspect its verification reports; a configured build is not proof that an artifact has passed.
+
+Native packages include Python and Qt. The Windows installer is unsigned and installs for the current user. The Debian package requires administrator privileges to install, then runs as a normal desktop application. For the published 0.1.2 package:
 
 ```bash
 sudo apt install ./networkluki-cyberlab_0.1.2_amd64.deb
@@ -21,7 +23,16 @@ The footer displays `Skapat av Luki Hackwell` on the left and `Powered by networ
 
 ## Implemented modules
 
-| Module | Available in 0.1.2 | Boundaries |
+| Workspace page | Available in the 0.2.0 preview | Boundaries |
+| --- | --- | --- |
+| Daily tasks | Project checklist, optional due dates, open/done status, links to evidence records | At most 1,000 tasks per project; the table shows the latest 200; no scheduled execution or notifications |
+| Servers | On-demand local snapshot, imported server JSON, keyword-based log review | Point-in-time observations only; no SSH, agents, continuous polling, or system changes |
+| Development | Project file inventory and selected Python source review | Metadata inventory capped at 2,000 entries; Python AST triage capped at 512 KiB; no project code, tests, or build commands run |
+| AI assistant | Explanation of evidence explicitly reviewed and sent to an optional Ollama service | Loopback endpoint only, downloaded local model required, cloud features must be disabled; output is unverified and never executes actions |
+
+[Workspace guide](docs/WORKSPACE.md) covers the new pages, headless server collection, AI setup, and exact limits. AI integration has been checked with fixtures; inference with a real model has not been tested.
+
+| Security module | Available behavior | Boundaries |
 | --- | --- | --- |
 | Network | TCP connection checks against one explicit IPv4 or IPv6 address | Up to 128 selected ports, at most 8 workers, 0.6-second connection timeout per port; no host discovery or service identification |
 | Web / TLS | One HTTP `HEAD` request, response headers, contextual security-header observations, verified HTTPS metadata | No redirects, body analysis, proxy inheritance, authentication, or `GET` fallback; first validated DNS address is pinned for the connection |
@@ -59,11 +70,11 @@ The Python interpreter must provide `venv` and `pip`. On Linux, Qt also needs th
 
 ## Use
 
-1. Set the project label for the work you are performing.
-2. Select a module and enter the target IP/URL or choose a local file.
-3. For network operations, confirm that the selected target is within your authorized scope, then start the check.
-4. Review the returned observations and their limitations. Completed results are stored locally.
-5. Open the result history and export a selected result as JSON when needed.
+1. Set the project label to keep tasks and evidence together.
+2. Use **Daily tasks**, **Servers**, or **Development**, or select a security module for a scoped check. Network operations require confirmation that the target is within your authorized scope.
+3. Review observations and their limitations. Completed results are stored locally in **History**.
+4. In History, **Create review task** explicitly adds a linked checklist item; it does not apply a fix. **Use in AI** copies a result into an editable preview; it does not send it.
+5. Export a selected result as JSON, or review and redact the AI preview before explicitly generating an explanation.
 
 Network checks make real connections to the selected destination. They may appear in its logs or monitoring. The app does not verify ownership of a target, and the authorization control is not a technical authorization service.
 
@@ -77,11 +88,13 @@ The database filename is `results.sqlite3` under:
 | macOS | `~/Library/Application Support/NetworkLuki-CyberLab` |
 | Linux | `$XDG_DATA_HOME/NetworkLuki-CyberLab` when `XDG_DATA_HOME` is absolute; otherwise `~/.local/share/NetworkLuki-CyberLab` |
 
-Results and exports are **not encrypted**. They can contain target addresses, URL paths, response headers, file paths, and extracted strings. Stored URL query data is redacted. `Location` and `Content-Location` additionally have embedded credentials and fragments redacted; cookie-setting and selected authentication headers are also redacted. Arbitrary headers, URL paths, and other text can still contain secrets. This redaction affects recorded results, not the request sent to the target. Inspect exports before sharing them. Back up the data directory while the application is closed.
+Results, tasks, backups, and exports are **not encrypted**. They can contain target addresses, host metrics, log excerpts, URL paths, response headers, file paths, and extracted strings. Successful AI results store the exact reviewed `input_evidence`, `question`, and `response`, plus an evidence hash. Stored URL query data is redacted. `Location` and `Content-Location` additionally have embedded credentials and fragments redacted; cookie-setting and selected authentication headers are also redacted. Arbitrary headers, logs, paths, and other text can still contain secrets. This redaction affects recorded results, not the request sent to the target. Inspect evidence before sending it to AI or sharing exports.
+
+Before adding workspace task storage to an existing results database, the app creates `results.pre-workspace.sqlite3` in the same data directory. This is a SQLite backup, including committed WAL data, created with private POSIX permissions (`0600`). It never overwrites an existing backup: a collision stops migration so you can preserve or move the previous backup first. Existing results are retained. Back up the whole data directory while the application is closed before trying a preview or restoring older data; see [the workspace guide](docs/WORKSPACE.md#upgrading-an-existing-installation).
 
 Each stored result must be a JSON object and fit within 2 MiB. History loading validates JSON objects and rejects nonstandard JSON constants. The history display limit does not delete older database entries or impose a total database-size limit. JSON export rejects destinations inside the application data directory, including SQLite companion files, and rejects overwriting the analyzed source file.
 
-The application has no telemetry or remote result service. DNS lookups and the requested target connections occur when a web/network job runs. Installing dependencies requires access to the configured Python package index.
+The application has no telemetry. DNS lookups and target connections occur when a web/network job runs. AI requests occur only when requested and connect to a literal loopback address, but the service behind that address controls inference and data handling. Before using AI, set **`OLLAMA_NO_CLOUD=1` in Ollama's environment and restart Ollama**, then use a downloaded local model. A loopback API does not guarantee local inference; CyberLab cannot verify the backend's configuration. See the [Ollama setup instructions](docs/WORKSPACE.md#optional-ai-assistant). Installing dependencies and separately obtaining models requires network access.
 
 ## Development and verification
 
@@ -97,7 +110,7 @@ On Windows, replace `python` with `.\.venv\Scripts\python.exe`; on Linux/macOS, 
 
 ## License and dependencies
 
-Original project code is licensed under the [MIT License](LICENSE). Qt for Python and its included components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Nmap, TShark, YARA, and Ghidra are planned integrations and are not bundled or executed by this release.
+Original project code is licensed under the [MIT License](LICENSE). Qt for Python and its included components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Ollama and model weights are optional, separately installed components and are not bundled. Nmap, TShark, YARA, and Ghidra are planned integrations and are not bundled or executed.
 
 ## Primary documentation
 
@@ -107,4 +120,6 @@ Checked on **2026-11-14**:
 - [Qt for Python desktop deployment](https://doc.qt.io/qtforpython-6/deployment/index.html)
 - [Python project configuration](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/)
 - [PyInstaller platform-specific builds](https://pyinstaller.org/en/stable/operating-mode.html)
+
+Ollama's [local FAQ](https://docs.ollama.com/faq) and [cloud documentation](https://docs.ollama.com/cloud) were checked on **2026-11-15** for cloud-disable configuration and the local API's ability to use cloud models.
 

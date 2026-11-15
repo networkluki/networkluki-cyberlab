@@ -22,3 +22,5 @@ Windows requires Inno Setup 6. Linux requires `dpkg-deb` and the Qt desktop libr
 Each build executes the bundled application's isolated `--smoke-test NEW_REPORT_JSON` command. The workflow also runs `tools/verify_install.py` on disposable GitHub Actions runners: it installs the actual artifact, tests the installed app, and uninstalls it. The Linux installed check runs with the xcb platform under Xvfb. These CI installer checks are deliberately unavailable on ordinary workstations.
 
 The publishing job requires both installer verification reports, uploads a draft release, and publishes only after all asset uploads succeed. It does not overwrite an existing release. Build artifacts include checksums, the source commit and verification reports. Binaries are not code-signed by this workflow.
+
+The `codex/workspace-0.2.0` preview branch runs the native build and installation checks and uploads `package-windows` and `package-deb` CI artifacts. Its publishing job is deliberately skipped. A workflow run dispatched on `main` can publish the version declared by that checked-out source after both native jobs pass.
