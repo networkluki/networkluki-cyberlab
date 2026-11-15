@@ -1,5 +1,22 @@
 # Verification
 
+## 0.2.0 unified workspace preview
+
+Executed on 2026-11-15 with Linux x86_64, Python 3.12.14 and PySide6 6.12.0:
+
+- `python -m unittest discover -s tests -v`: **100 tests passed**, no skips. This includes the previous 43 regressions and 57 added tests across tasks/migration, operations, development, AI, headless CLI and workspace UI.
+- Task persistence, project boundaries, state changes, record links, date validation and capacity are covered. The migration tests verify a private SQLite backup including committed WAL records, no overwrite, and unchanged legacy schema when backup publication fails.
+- Operations tests use generated snapshot/log fixtures and a real local system snapshot; no remote machine is contacted. The headless CLI runs with site packages disabled and an invalid Qt platform setting, then refuses to overwrite its output.
+- Development tests exercise bounded inventory, Python AST signals, redacted evidence, cancellation, changed-file rejection and a directory-to-symlink swap. Inspected source is never executed.
+- AI tests use actual HTTP servers bound to loopback and controlled responses, not a real Ollama model. They cover direct connections without DNS/proxies, redirects, input/output bounds, invalid JSON, cancellation, slow headers, cloud-tag rejection, and the retained evidence/hash.
+- Eight new offscreen GUI integration tests cover task persistence, explicit evidence preview, consent invalidation, model-list isolation, unverified plain-text output, real snapshot/source workers and project switching.
+- `--smoke-test` passed desktop startup, both footer labels/placement, hashing, SQLite, JSON export, tasks, system snapshot and development checks.
+- Visually inspected the rendered overview at 1200 × 850 and all four new workspaces at 960 × 700. Pages scroll vertically; the footer remains visible. These were Qt offscreen renders, not a native desktop session.
+
+The branch build workflow separately builds and installs Windows x64 and Debian 13 amd64 packages. Until its result is recorded, these local checks do not establish that the new installers pass. Branch builds upload CI artifacts and do not publish a 0.2.0 release automatically. The published 0.1.2 installers remain a separate version.
+
+Not verified for 0.2.0: real-model answer quality, Ollama server privacy configuration, remote server identity, continuous monitoring, macOS execution, or every Linux/Windows desktop configuration. No SSH execution, automatic remediation or tool-calling agent is implemented. The checks support a workspace preview, not a security-certification claim.
+
 ## 0.1.2 release checks
 
 On 2026-11-14, all 41 existing tests passed locally after the footer and version changes, using Linux x86_64, Python 3.12.14 and PySide6 6.12.0. The new isolated `--smoke-test` passed, and the footer screenshot was visually inspected. A local PyInstaller 6.22.3 build also passed the packaged desktop/footer/hash/SQLite/export smoke checks.
