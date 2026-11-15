@@ -2,9 +2,14 @@
 
 **Version 0.1.2 — desktop MVP**
 
-![NetworkLuki CyberLab overview](docs/overview.png)
+**Unreleased workbench expansion:** this branch adds Python code review, everyday
+JSON/text utilities, and optional Ollama explanations in the same project
+workspace. These additions are available from source; the existing 0.1.2
+installers do not include them. See [the combined workflow](docs/WORKBENCH.md).
 
-An open-source desktop workbench with an English interface for scoped network observations, web/TLS inspection, file hashing, and static binary inspection. Results stay on your computer and can be grouped by project and exported as JSON.
+![NetworkLuki CyberLab combined workbench](docs/workbench-overview.png)
+
+An open-source desktop workbench with an English interface for security observations, developer utilities, and optional AI explanations. Results are grouped by project and exported as JSON. AI requests are sent only after reviewing the evidence and confirming the request to a trusted Ollama service on your computer.
 
 The intended desktop targets are **Windows, Linux, and macOS**, using Python and Qt for Python. This release is an initial implementation, not a complete penetration-testing suite or a claim of being the “most advanced” security tool. The release workflow builds Windows x64 and Debian 13 amd64 installers and verifies the installed applications before publishing them. macOS remains a source-only target without platform verification. See the [verification notes](docs/VERIFICATION.md) and the JSON reports attached to each release.
 
@@ -30,6 +35,18 @@ The footer displays `Skapat av Luki Hackwell` on the left and `Powered by networ
 | Results | Local SQLite history, project labels, JSON export | History displays the latest 200 entries, with a combined 16 MiB payload limit; local observations, not signed reports or a forensic chain of custody |
 
 An open port is not proof of a vulnerability. A header's presence or absence does not establish whether an application's configuration is secure. File signatures identify possible formats; they do not validate a file or establish that it is safe.
+
+### Added on this branch
+
+| Area | Implemented | Boundaries |
+| --- | --- | --- |
+| Code review | Five Python AST checks, source hash, line/column references and remediation guidance | One UTF-8 `.py`/`.pyw` file up to 256 KiB; observations require review; no source execution or automatic fixes |
+| Utilities | JSON validation/formatting and unified text comparison | 128 KiB per input; exact JSON number tokens retained; duplicate keys rejected; 64 nesting levels; 1,000 lines per diff input; 256 KiB output |
+| AI assistant | Explain selected current or historical results through Ollama | Optional; review editable evidence and confirm each request; no commands, file writes, model downloads or automatic actions |
+
+All three areas use the existing project, worker, history and export workflow.
+Utilities and reviewed AI evidence may contain secrets and are stored in the
+unencrypted local history. Inspect the evidence before sending it.
 
 ## Run from source
 
@@ -81,7 +98,7 @@ Results and exports are **not encrypted**. They can contain target addresses, UR
 
 Each stored result must be a JSON object and fit within 2 MiB. History loading validates JSON objects and rejects nonstandard JSON constants. The history display limit does not delete older database entries or impose a total database-size limit. JSON export rejects destinations inside the application data directory, including SQLite companion files, and rejects overwriting the analyzed source file.
 
-The application has no telemetry or remote result service. DNS lookups and the requested target connections occur when a web/network job runs. Installing dependencies requires access to the configured Python package index.
+The application has no telemetry or remote result-storage service. DNS lookups and the requested target connections occur when a web/network job runs. Optional AI uses the fixed loopback Ollama endpoint only after confirmation. The Ollama service must be trusted and configured with cloud features disabled; loopback alone does not prove where inference happens. Installing dependencies requires access to the configured Python package index.
 
 ## Development and verification
 

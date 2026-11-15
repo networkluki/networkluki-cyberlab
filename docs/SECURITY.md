@@ -1,5 +1,16 @@
 # Security model
 
+## Unreleased combined workbench
+
+The source branch adds bounded Python AST observations, JSON formatting, text
+comparison and optional AI explanations. See [WORKBENCH.md](WORKBENCH.md) for
+input limits and model trust. Python findings are review candidates; AI answers
+are unverified interpretations and cannot initiate actions. Utilities and AI
+evidence are retained in the unencrypted history. The AI adapter contacts only
+the fixed loopback Ollama service after explicit request confirmation; that
+service must be trusted and configured with cloud disabled. These additions
+have not received new native installer verification.
+
 NetworkLuki CyberLab 0.1.2 is a local, unprivileged desktop MVP. Use network functions only within your authorized scope. The application does not establish ownership or authorization and does not provide a security boundary against another process running as the same user.
 
 ## Input and execution boundaries

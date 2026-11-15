@@ -15,19 +15,23 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
-    QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
     QWidget,
 )
 
 from .forensics import analyze_file, inspect_binary
+from .code_review import review_python
+from .assistant import explain
 from .network import tcp_scan, web_probe
 from .storage import Store
+from .utilities import compare_text, format_json
 from . import __version__
 
 LOGGER = logging.getLogger(__name__)
 MODULE_NAMES = {
     "network": "Network", "web": "Web & TLS", "forensics": "File forensics",
-    "binary": "Binary analysis",
+    "binary": "Binary analysis", "code_review": "Code review",
+    "utilities": "Utilities", "assistant": "AI · unverified",
 }
 
 STYLESHEET = """
@@ -156,6 +160,7 @@ class MainWindow(QMainWindow):
         self.result_views: dict[str, QPlainTextEdit] = {}
         self.result_summaries: dict[str, QLabel] = {}
         self.export_buttons: dict[str, QPushButton] = {}
+        self.explain_buttons: dict[str, QPushButton] = {}
         self.run_buttons: list[QPushButton] = []
         self.input_widgets: list[QWidget] = []
         self.history_record: dict | None = None
@@ -186,7 +191,8 @@ class MainWindow(QMainWindow):
         side.addSpacing(24)
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
-        for name in ("Overview", "Network", "Web & TLS", "File forensics", "Binary analysis", "History"):
+        for name in ("Overview", "Network", "Web & TLS", "File forensics", "Binary analysis",
+                     "History", "Code review", "Utilities", "AI assistant"):
             self.navigation.addItem(QListWidgetItem(name))
         self.navigation.currentRowChanged.connect(self._navigate)
         side.addWidget(self.navigation, 1)
@@ -223,6 +229,9 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(scrollable(self._file_page(False)))
         self.pages.addWidget(scrollable(self._file_page(True)))
         self.pages.addWidget(scrollable(self._history_page()))
+        self.pages.addWidget(scrollable(self._code_review_page()))
+        self.pages.addWidget(scrollable(self._utilities_page()))
+        self.pages.addWidget(scrollable(self._assistant_page()))
         body.addWidget(self.pages, 1)
         footer = QWidget()
         footer_layout = QHBoxLayout(footer)
@@ -250,16 +259,17 @@ class MainWindow(QMainWindow):
 
     def _overview_page(self) -> QWidget:
         page, layout = self._page(
-            "SECURITY RESEARCH WORKBENCH", "Inspect. Document. Verify.",
-            "One workspace for scoped network checks, file forensics and static binary analysis.",
+            "SECURITY / EVERYDAY TOOLS / AI", "Inspect. Simplify. Understand.",
+            "Review security concerns, work with JSON and text, and ask AI to explain selected evidence. "
+            "One workspace, shared projects and local history.",
         )
         stats = QHBoxLayout()
         self.stat_results = label("0", "stat")
         self.stat_network = label("0", "stat")
         self.stat_files = label("0", "stat")
         for value, caption in ((self.stat_results, "Project results shown"),
-                               (self.stat_network, "Network and web results"),
-                               (self.stat_files, "File and binary results")):
+                               (self.stat_network, "Security and file results"),
+                               (self.stat_files, "Utility and AI results")):
             frame, content = card()
             content.addWidget(value)
             content.addWidget(label(caption, "muted", True))
@@ -269,6 +279,9 @@ class MainWindow(QMainWindow):
         grid = QGridLayout()
         grid.setSpacing(13)
         tools = (
+            ("SECURITY", "Python code review", "Find risky code patterns with source locations and review guidance.", 6),
+            ("EVERYDAY TOOLS", "JSON / text comparison", "Format strict JSON and compare two text versions without changing files.", 7),
+            ("AI ASSISTANT", "Explain selected evidence", "Review the exact input, then ask your Ollama service for an explanation.", 8),
             ("01  /  NETWORK", "TCP connect", "Check selected ports on an explicitly specified IP address.", 1),
             ("02  /  WEB", "HTTP/TLS HEAD", "Read response headers and TLS details from a selected target.", 2),
             ("03  /  FORENSICS", "SHA-256 / SHA-512", "Calculate file hashes and record basic file information.", 3),
@@ -368,6 +381,119 @@ class MainWindow(QMainWindow):
         self._result_area(module, layout)
         return page
 
+    def _code_review_page(self) -> QWidget:
+        page, layout = self._page(
+            "SECURITY / STATIC REVIEW", "Python code review",
+            "Read-only checks for risky Python constructs. Findings require human review; "
+            "an empty result does not establish that code is safe.",
+        )
+        frame, content = card()
+        content.addWidget(label("Python source · .py or .pyw · UTF-8 · up to 256 KiB", "muted", True))
+        row = QHBoxLayout()
+        self.code_path = QLineEdit()
+        self.code_path.setReadOnly(True)
+        self.code_path.setPlaceholderText("Select a Python source file…")
+        self.code_path.setAccessibleName("Python source path")
+        choose = QPushButton("Choose file…")
+        choose.clicked.connect(lambda: self.choose_file(self.code_path))
+        row.addWidget(self.code_path, 1)
+        row.addWidget(choose)
+        content.addLayout(row)
+        content.addWidget(self._run_button("Review Python source", self.start_code_review),
+                          0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(frame)
+        self.input_widgets.append(frame)
+        self._result_area("code_review", layout)
+        return page
+
+    def _text_input(self, placeholder: str, accessible_name: str) -> QPlainTextEdit:
+        field = QPlainTextEdit()
+        field.setPlaceholderText(placeholder)
+        field.setAccessibleName(accessible_name)
+        field.setFont(QFont("monospace", 10))
+        field.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        field.setMinimumHeight(130)
+        field.setMaximumHeight(230)
+        return field
+
+    def _utilities_page(self) -> QWidget:
+        page, layout = self._page(
+            "EVERYDAY TOOLS / LOCAL", "JSON & text utilities",
+            "Format JSON or compare two texts. Results are saved to the current project; "
+            "avoid pasting secrets you do not want in local history.",
+        )
+        tabs = QTabWidget()
+        json_page = QWidget()
+        json_layout = QVBoxLayout(json_page)
+        json_layout.addWidget(label("JSON · up to 128 KiB · nesting depth up to 64", "muted", True))
+        self.json_input = self._text_input('Paste JSON, for example {"service": "apache"}', "JSON input")
+        json_layout.addWidget(self.json_input)
+        json_layout.addWidget(self._run_button("Validate & format JSON", self.start_json),
+                              0, Qt.AlignmentFlag.AlignLeft)
+        tabs.addTab(json_page, "JSON formatter")
+        diff_page = QWidget()
+        diff_layout = QVBoxLayout(diff_page)
+        diff_layout.addWidget(label("Each text: up to 128 KiB and 1,000 lines. Output: up to 256 KiB.", "muted", True))
+        row = QHBoxLayout()
+        self.diff_before = self._text_input("Before", "Text before")
+        self.diff_after = self._text_input("After", "Text after")
+        row.addWidget(self.diff_before)
+        row.addWidget(self.diff_after)
+        diff_layout.addLayout(row)
+        diff_layout.addWidget(self._run_button("Compare text", self.start_diff),
+                              0, Qt.AlignmentFlag.AlignLeft)
+        tabs.addTab(diff_page, "Text comparison")
+        layout.addWidget(tabs)
+        self.input_widgets.append(tabs)
+        self._result_area("utilities", layout)
+        return page
+
+    def _assistant_page(self) -> QWidget:
+        page, layout = self._page(
+            "AI / OPTIONAL / UNVERIFIED", "Explain with AI",
+            "Ask a model to explain selected evidence. AI output is an unverified interpretation "
+            "and can be wrong. It cannot run commands or apply changes.",
+        )
+        frame, content = card()
+        content.addWidget(label(
+            "Ollama endpoint: http://127.0.0.1:11434. Use a trusted service with cloud features disabled. "
+            "Remote models reported by Ollama are rejected; this is not a guarantee about the service itself.",
+            "muted", True,
+        ))
+        content.addWidget(label("Installed model name", "muted"))
+        self.ai_model = QLineEdit()
+        self.ai_model.setMaxLength(128)
+        self.ai_model.setPlaceholderText("For example: qwen2.5-coder:7b")
+        self.ai_model.setAccessibleName("Ollama model name")
+        content.addWidget(self.ai_model)
+        content.addWidget(label("Evidence to send · review or redact · up to 64 KiB", "muted", True))
+        self.ai_evidence = self._text_input(
+            "Use Explain with AI on a result, or paste a selected log excerpt or evidence here.",
+            "Evidence sent to AI",
+        )
+        content.addWidget(self.ai_evidence)
+        content.addWidget(label("Question · up to 4 KiB", "muted"))
+        self.ai_question = QLineEdit("Explain the evidence, its limitations, and the next verification steps.")
+        self.ai_question.setMaxLength(4096)
+        self.ai_question.setAccessibleName("Question for AI")
+        content.addWidget(self.ai_question)
+        content.addWidget(label(
+            "The shown evidence and question are sent after you start the request. "
+            "Evidence, question and answer are saved unencrypted in local history. Remove secrets before sending.",
+            "muted", True,
+        ))
+        self.ai_consent = QCheckBox("I approve sending the shown evidence and question to this model.")
+        self.ai_consent.setAccessibleName("Approve AI request")
+        for signal in (self.ai_model.textChanged, self.ai_evidence.textChanged, self.ai_question.textChanged):
+            signal.connect(lambda: self.ai_consent.setChecked(False))
+        content.addWidget(self.ai_consent)
+        content.addWidget(self._run_button("Ask Ollama", self.start_assistant),
+                          0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(frame)
+        self.input_widgets.append(frame)
+        self._result_area("assistant", layout)
+        return page
+
     def _run_button(self, text: str, callback: Callable) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName("primary")
@@ -379,6 +505,17 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         row.addWidget(label("Results", "section"))
         row.addStretch()
+        if module != "assistant":
+            explain_button = QPushButton("Explain with AI")
+            explain_button.setEnabled(False)
+            explain_button.clicked.connect(lambda: self.prepare_assistant(self.last_records.get(module)))
+            self.explain_buttons[module] = explain_button
+            row.addWidget(explain_button)
+        if module == "utilities":
+            self.copy_utility = QPushButton("Copy output")
+            self.copy_utility.setEnabled(False)
+            self.copy_utility.clicked.connect(self.copy_utility_output)
+            row.addWidget(self.copy_utility)
         export = QPushButton("Export JSON")
         export.setEnabled(False)
         export.clicked.connect(lambda: self.export_record(self.last_records.get(module)))
@@ -392,8 +529,14 @@ class MainWindow(QMainWindow):
         result = QPlainTextEdit()
         result.setReadOnly(True)
         result.setFont(QFont("monospace", 10))
-        result.setPlaceholderText("Verifiable observations appear here after a run.")
-        result.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        result.setPlaceholderText(
+            "Unverified AI interpretation appears here after an approved request."
+            if module == "assistant" else "Results appear here after a run."
+        )
+        result.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.WidgetWidth if module == "assistant"
+            else QPlainTextEdit.LineWrapMode.NoWrap
+        )
         result.setMinimumHeight(140)
         self.result_views[module] = result
         layout.addWidget(result, 1)
@@ -408,6 +551,10 @@ class MainWindow(QMainWindow):
         refresh = QPushButton("Refresh")
         refresh.clicked.connect(self.refresh_history)
         toolbar.addWidget(refresh)
+        self.history_explain = QPushButton("Explain with AI")
+        self.history_explain.setEnabled(False)
+        self.history_explain.clicked.connect(lambda: self.prepare_assistant(self.history_record))
+        toolbar.addWidget(self.history_explain)
         self.history_export = QPushButton("Export JSON")
         self.history_export.setEnabled(False)
         self.history_export.clicked.connect(lambda: self.export_record(self.history_record))
@@ -466,6 +613,48 @@ class MainWindow(QMainWindow):
             return
         self._start(module, inspect_binary if module == "binary" else analyze_file, (path,))
 
+    def start_code_review(self) -> None:
+        if not self.code_path.text():
+            show_message(self, "Choose Python source", "Choose a Python source file before starting the review.")
+            return
+        self._start("code_review", review_python, (self.code_path.text(),))
+
+    def start_json(self) -> None:
+        self._start("utilities", format_json, (self.json_input.toPlainText(),))
+
+    def start_diff(self) -> None:
+        self._start("utilities", compare_text, (self.diff_before.toPlainText(), self.diff_after.toPlainText()))
+
+    def prepare_assistant(self, record: dict | None) -> None:
+        if self.worker is not None or record is None or record.get("module") == "assistant":
+            return
+        # Preserve the saved record's project, ID, timestamps and source hashes.
+        # Nothing is sent until the user reviews this editable text and consents.
+        self.ai_evidence.setPlainText(json.dumps(record, ensure_ascii=False, indent=2))
+        self.ai_consent.setChecked(False)
+        self.navigation.setCurrentRow(8)
+        self.pages.widget(8).verticalScrollBar().setValue(0)
+        self.ai_evidence.setFocus()
+
+    def start_assistant(self) -> None:
+        if not self.ai_consent.isChecked():
+            show_message(self, "Review the AI request", "Review the evidence and question, then approve sending them to the selected model.")
+            return
+        self._start("assistant", explain, (
+            self.ai_evidence.toPlainText(), self.ai_question.text(), self.ai_model.text().strip(),
+        ))
+        self.ai_consent.setChecked(False)
+
+    def copy_utility_output(self) -> None:
+        record = self.last_records.get("utilities")
+        if record is None:
+            return
+        result = record["result"]
+        output = result.get("formatted", result.get("diff", ""))
+        if isinstance(output, str):
+            QApplication.clipboard().setText(output)
+            self.status.setText("Copied")
+
     def _start(self, module: str, function: Callable, arguments: tuple) -> None:
         if self.worker is not None:
             return
@@ -481,6 +670,8 @@ class MainWindow(QMainWindow):
         self.result_views[module].clear()
         self.last_records.pop(module, None)
         self.export_buttons[module].setEnabled(False)
+        if module == "utilities":
+            self.copy_utility.setEnabled(False)
         self._set_busy(True)
         self.worker = Job(function, arguments, self)
         self.worker.succeeded.connect(self._completed)
@@ -492,6 +683,11 @@ class MainWindow(QMainWindow):
         self.project.setEnabled(not busy)
         for widget in self.input_widgets:
             widget.setEnabled(not busy)
+        for module, button in self.explain_buttons.items():
+            button.setEnabled(not busy and module in self.last_records)
+        self.history_explain.setEnabled(
+            not busy and self.history_record is not None and self.history_record.get("module") != "assistant"
+        )
         self.cancel_button.setEnabled(busy)
         self.status.setText("Working…" if busy else "Ready")
 
@@ -514,13 +710,33 @@ class MainWindow(QMainWindow):
             LOGGER.exception("Could not save analysis")
             show_message(self, "Could not save the result", str(exc))
         self.last_records[module] = record
-        self.result_views[module].setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
+        if module == "assistant":
+            output = "UNVERIFIED AI INTERPRETATION\n\n"
+            if result.get("answer_truncated") is True:
+                output += "INCOMPLETE: The generation limit was reached. This answer is incomplete.\n\n"
+            output += str(result.get("answer", ""))
+        elif module == "utilities":
+            output = result.get("formatted", result.get("diff", ""))
+            if not output and result.get("changed") is False:
+                output = "No differences."
+            self.copy_utility.setEnabled(True)
+        else:
+            output = json.dumps(result, ensure_ascii=False, indent=2)
+        self.result_views[module].setPlainText(output)
+        qualifier = "Unverified AI interpretation" if module == "assistant" else (
+            "Review required" if module == "code_review" and result.get("findings") else "Complete"
+        )
+        if module == "assistant" and result.get("answer_truncated") is True:
+            qualifier += " · incomplete (generation limit)"
         self.result_summaries[module].setText(
-            f"Complete · saved to project {self.active_project}." if saved
-            else "Complete · this result is only available in this window. Export it to keep a copy."
+            f"{qualifier} · saved to project {self.active_project}." if saved
+            else f"{qualifier} · this result is only available in this window. Export it to keep a copy."
         )
         self.export_buttons[module].setEnabled(True)
         self.refresh_history()
+        if module == "assistant" and self.pages.currentIndex() == 8:
+            scroll = self.pages.widget(8).verticalScrollBar()
+            scroll.setValue(scroll.maximum())
 
     def _failed(self, message: str) -> None:
         cancelled = bool(self.worker and self.worker.cancel_event.is_set()) or message == "Operation cancelled"
@@ -550,6 +766,7 @@ class MainWindow(QMainWindow):
             return
         self.history_record = None
         self.history_export.setEnabled(False)
+        self.history_explain.setEnabled(False)
         self.history_preview.clear()
         self.history.blockSignals(True)
         self.history.setRowCount(len(records))
@@ -565,14 +782,20 @@ class MainWindow(QMainWindow):
         self.history.blockSignals(False)
         self.history_count.setText(f"{len(records)} results · {self.project.text().strip() or 'no project'}")
         self.stat_results.setText(str(len(records)))
-        self.stat_network.setText(str(sum(item.get("module") in ("network", "web") for item in records)))
-        self.stat_files.setText(str(sum(item.get("module") in ("forensics", "binary") for item in records)))
+        self.stat_network.setText(str(sum(item.get("module") in (
+            "network", "web", "forensics", "binary", "code_review",
+        ) for item in records)))
+        self.stat_files.setText(str(sum(item.get("module") in ("utilities", "assistant") for item in records)))
 
     def _select_history(self) -> None:
         row = self.history.currentRow()
         item = self.history.item(row, 0) if row >= 0 else None
         self.history_record = item.data(Qt.ItemDataRole.UserRole) if item else None
         self.history_export.setEnabled(self.history_record is not None)
+        self.history_explain.setEnabled(
+            self.worker is None and self.history_record is not None
+            and self.history_record.get("module") != "assistant"
+        )
         self.history_preview.setPlainText(json.dumps(self.history_record, ensure_ascii=False, indent=2) if self.history_record else "")
 
     def export_record(self, record: dict | None) -> None:

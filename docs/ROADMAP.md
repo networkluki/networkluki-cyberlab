@@ -1,5 +1,14 @@
 # NetworkLuki CyberLab — development roadmap
 
+## Unreleased combined workbench
+
+This branch implements a shared project workflow for bounded Python code
+observations, JSON/text utilities and optional explanations through a trusted
+local Ollama service. Evidence can move from a current or historical result
+into an editable AI request preview; sending requires explicit confirmation.
+The assistant has no execution capability. These source additions are described
+in [WORKBENCH.md](WORKBENCH.md) and are not included in 0.1.2 installers.
+
 ## Starting point
 
 Version 0.1.2 is an initial desktop application with an English interface and a shared codebase intended for Windows, Linux, and macOS. It includes TCP connection checks, HTTP/TLS observations, file hashing, basic binary inspection, and local result history. The goal is a unified workspace for penetration testing, security research, digital forensics, and reverse engineering.

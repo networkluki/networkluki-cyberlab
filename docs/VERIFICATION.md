@@ -1,5 +1,38 @@
 # Verification
 
+## Unreleased combined workbench checks — 2026-11-15
+
+Executed locally on Linux x86_64, Python 3.12.14 and PySide6-Essentials 6.12.0:
+
+- The complete source suite passes **90 tests**, with no skips: 43 existing
+  regressions plus 14 Python review, 8 utility, 17 Ollama adapter and 8 combined
+  workbench GUI checks.
+- The updated isolated `--smoke-test` passes all nine-page desktop, footer,
+  hashing, SQLite/export, Python review, JSON formatting and text comparison
+  checks. This was a source runtime check, not a new frozen installer build.
+- GUI integration exercises real review/utility workers through persistence,
+  selected-record transfer, send-consent invalidation, unverified/truncated
+  answer labels and unchanged source files. AI inference is mocked.
+- Input/response limits, model metadata rejection, malformed API responses,
+  fixed-loopback transport, cancellation during headers and body reads, and
+  watchdog cleanup are covered by adapter fixtures. No model was downloaded.
+- JSON tests retain exact long number tokens and valid Unicode surrogate pairs,
+  reject duplicate/invalid keys and bound nesting/output. Diff tests cover
+  line-ending and missing-final-newline changes.
+- Overview and assistant offscreen screenshots were visually inspected.
+  `git diff --check` passes.
+
+**Not verified for this expansion:** real Ollama model inference or answer
+quality; native Windows/macOS behavior; new EXE/DEB installers; installed-app
+tests on Debian 13; a production security audit. No external target was scanned.
+Published 0.1.2 release verification below does not certify these new features.
+
+Reproduce after installing source dependencies:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## 0.1.2 release checks
 
 On 2026-11-14, all 41 existing tests passed locally after the footer and version changes, using Linux x86_64, Python 3.12.14 and PySide6 6.12.0. The new isolated `--smoke-test` passed, and the footer screenshot was visually inspected. A local PyInstaller 6.22.3 build also passed the packaged desktop/footer/hash/SQLite/export smoke checks.
