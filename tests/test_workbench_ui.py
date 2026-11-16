@@ -1,4 +1,4 @@
-"""Exercise the integrated evidence-to-AI flow without a live AI service."""
+"""Exercise the merged Code review / Utilities flow with the 0.2.0 workspace AI page."""
 
 import importlib.util
 import json
@@ -15,7 +15,7 @@ if QT_AVAILABLE:
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication
     from networkluki_cyberlab.storage import Store
-    from networkluki_cyberlab.ui import MainWindow
+    from networkluki_cyberlab.ui import MainWindow, PAGE_NAMES
 
 
 @unittest.skipUnless(QT_AVAILABLE, "Install project dependencies for GUI tests")
@@ -50,11 +50,11 @@ class WorkbenchUiTests(unittest.TestCase):
             time.sleep(0.005)
         self.assertIsNone(self.window.worker, "Worker did not finish")
 
-    def test_all_three_areas_share_navigation_and_original_footer(self):
-        self.assertEqual(self.window.pages.count(), 9)
-        self.assertEqual(self.window.navigation.item(5).text(), "History")
-        for index, name in ((6, "Code review"), (7, "Utilities"), (8, "AI assistant")):
-            self.assertEqual(self.window.navigation.item(index).text(), name)
+    def test_combined_pages_append_without_moving_workspace_pages(self):
+        self.assertEqual(self.window.pages.count(), 12)
+        self.assertEqual(PAGE_NAMES[6:10], ("Daily tasks", "Servers", "Development", "AI assistant"))
+        self.assertEqual(PAGE_NAMES[10:], ("Code review", "Utilities"))
+        for index in (9, 10, 11):
             self.window.navigation.setCurrentRow(index)
             self.assertEqual(self.window.pages.currentIndex(), index)
         self.assertEqual(self.window.footer_author.text(), "Skapat av Luki Hackwell")
@@ -72,8 +72,8 @@ class WorkbenchUiTests(unittest.TestCase):
         self.assertIn("Review required", self.window.result_summaries["code_review"].text())
         self.assertEqual(source.read_text(encoding="utf-8"), original)
 
-    def test_selected_record_is_previewed_verbatim_without_sending(self):
-        record = {"id": 12, "project": "Evidence project", "module": "code_review",
+    def test_result_preview_to_ai_is_explicit_and_does_not_send(self):
+        record = {"id": 12, "project": "Local lab", "module": "code_review",
                   "result": {"source_sha256": "a" * 64, "findings": []}}
         self.window.ai_consent.setChecked(True)
         with patch.object(self.window, "_start") as start:
@@ -81,77 +81,62 @@ class WorkbenchUiTests(unittest.TestCase):
             start.assert_not_called()
         self.assertEqual(json.loads(self.window.ai_evidence.toPlainText()), record)
         self.assertFalse(self.window.ai_consent.isChecked())
-        self.assertEqual(self.window.navigation.currentRow(), 8)
+        self.assertEqual(self.window.navigation.currentRow(), 9)
 
-    def test_payload_and_model_edits_invalidate_ai_consent(self):
-        for field, value in ((self.window.ai_model, "test:local"),
-                             (self.window.ai_question, "Explain the warning.")):
+    def test_ai_inputs_invalidate_consent(self):
+        self.window.ai_model.addItems(["local-model:latest", "second-model:latest"])
+        self.window.ai_question.setPlainText("Explain")
+        self.window.ai_evidence.setPlainText("Evidence")
+        for edit in (
+            lambda: self.window.ai_evidence.setPlainText("Changed evidence"),
+            lambda: self.window.ai_question.setPlainText("Changed question"),
+            lambda: self.window.ai_model.setCurrentIndex(1),
+            lambda: self.window.ai_endpoint.setText("http://127.0.0.1:11435"),
+        ):
             self.window.ai_consent.setChecked(True)
-            field.setText(value)
+            edit()
             self.assertFalse(self.window.ai_consent.isChecked())
-        self.window.ai_consent.setChecked(True)
-        self.window.ai_evidence.setPlainText("Changed evidence")
-        self.assertFalse(self.window.ai_consent.isChecked())
 
-    def test_ai_is_blocked_without_consent_and_consumes_approval_once(self):
+    def test_ai_requires_consent_and_consumes_it_once(self):
+        self.window.ai_model.addItem("local-model:latest")
+        self.window.ai_question.setPlainText("Question")
+        self.window.ai_evidence.setPlainText("Selected evidence")
         with patch("networkluki_cyberlab.ui.show_message"), patch.object(self.window, "_start") as start:
-            self.window.start_assistant()
+            self.window.start_ai_explanation()
             start.assert_not_called()
-            self.window.ai_evidence.setPlainText("Selected evidence")
-            self.window.ai_question.setText("Question")
-            self.window.ai_model.setText("test:local")
             self.window.ai_consent.setChecked(True)
-            self.window.start_assistant()
+            self.window.start_ai_explanation()
             self.assertEqual(start.call_args.args[0], "assistant")
-            self.assertEqual(start.call_args.args[2], ("Selected evidence", "Question", "test:local"))
+            self.assertEqual(
+                start.call_args.args[2],
+                ("http://127.0.0.1:11434", "local-model:latest", "Question", "Selected evidence"),
+            )
             self.assertFalse(self.window.ai_consent.isChecked())
 
-    def test_json_result_to_ai_preserves_project_and_marks_interpretation(self):
+    def test_json_result_can_be_previewed_for_ai(self):
         self.window.json_input.setPlainText('{"service":"apache","enabled":true}')
         self.window.start_json()
         self.wait_idle()
         record = self.window.last_records["utilities"]
-        self.assertEqual(record["project"], "Local lab")
         self.assertEqual(json.loads(self.window.result_views["utilities"].toPlainText()),
                          {"service": "apache", "enabled": True})
         self.window.explain_buttons["utilities"].click()
-        evidence = self.window.ai_evidence.toPlainText()
-        self.assertEqual(json.loads(evidence)["id"], record["id"])
-        self.window.ai_model.setText("test:local")
-        self.window.ai_consent.setChecked(True)
-        mocked_result = {"name": "AI explanation", "answer": "<script>untrusted()</script>",
-                         "verification": "unverified_ai_interpretation", "evidence": evidence,
-                         "answer_truncated": True, "done_reason": "length"}
-        with patch("networkluki_cyberlab.ui.explain", return_value=mocked_result) as ai:
-            self.window.start_assistant()
-            self.wait_idle()
-            self.assertEqual(ai.call_args.args[0], evidence)
-        self.assertIn("Unverified AI interpretation", self.window.result_summaries["assistant"].text())
-        self.assertIn("incomplete (generation limit)", self.window.result_summaries["assistant"].text())
-        self.assertIn("INCOMPLETE: The generation limit was reached.",
-                      self.window.result_views["assistant"].toPlainText())
-        self.assertIn("<script>untrusted()</script>", self.window.result_views["assistant"].toPlainText())
-        self.assertEqual(self.window.history.rowCount(), 2)
-        self.assertEqual(self.window.last_records["assistant"]["result"]["verification"],
-                         "unverified_ai_interpretation")
-        self.assertNotIn("assistant", self.window.explain_buttons)
+        self.assertEqual(json.loads(self.window.ai_evidence.toPlainText())["id"], record["id"])
+        self.assertEqual(self.window.navigation.currentRow(), 9)
 
-    def test_history_ai_transfer_is_explicit_and_disabled_for_ai_results(self):
+    def test_history_ai_transfer_is_disabled_for_ai_results(self):
         self.store.add_result("Local lab", "web", {"status": 200})
         self.window.refresh_history()
-        self.window.navigation.setCurrentRow(5)
         self.window.history.selectRow(0)
         self.app.processEvents()
-        selected = self.window.history_record
-        self.assertTrue(self.window.history_explain.isEnabled())
-        self.window.history_explain.click()
-        self.assertEqual(json.loads(self.window.ai_evidence.toPlainText()), selected)
-        self.assertFalse(self.window.ai_consent.isChecked())
-        self.store.add_result("Local lab", "assistant", {"answer": "Unverified"})
+        self.assertTrue(self.window.history_ai.isEnabled())
+        self.window.history_ai.click()
+        self.assertEqual(self.window.navigation.currentRow(), 9)
+        self.store.add_result("Local lab", "assistant", {"response": "Unverified"})
         self.window.refresh_history()
         self.window.history.selectRow(0)
         self.app.processEvents()
-        self.assertFalse(self.window.history_explain.isEnabled())
+        self.assertFalse(self.window.history_ai.isEnabled())
 
     def test_diff_result_and_copy_preserve_actual_output(self):
         self.window.diff_before.setPlainText("before\n")

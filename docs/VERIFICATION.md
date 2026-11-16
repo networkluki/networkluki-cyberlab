@@ -1,37 +1,30 @@
 # Verification
 
-## Unreleased combined workbench checks — 2026-11-15
+## 0.2.0 unified workspace preview
 
-Executed locally on Linux x86_64, Python 3.12.14 and PySide6-Essentials 6.12.0:
+Executed on 2026-11-15 with Linux x86_64, Python 3.12.14 and PySide6 6.12.0:
 
-- The complete source suite passes **90 tests**, with no skips: 43 existing
-  regressions plus 14 Python review, 8 utility, 17 Ollama adapter and 8 combined
-  workbench GUI checks.
-- The updated isolated `--smoke-test` passes all nine-page desktop, footer,
-  hashing, SQLite/export, Python review, JSON formatting and text comparison
-  checks. This was a source runtime check, not a new frozen installer build.
-- GUI integration exercises real review/utility workers through persistence,
-  selected-record transfer, send-consent invalidation, unverified/truncated
-  answer labels and unchanged source files. AI inference is mocked.
-- Input/response limits, model metadata rejection, malformed API responses,
-  fixed-loopback transport, cancellation during headers and body reads, and
-  watchdog cleanup are covered by adapter fixtures. No model was downloaded.
-- JSON tests retain exact long number tokens and valid Unicode surrogate pairs,
-  reject duplicate/invalid keys and bound nesting/output. Diff tests cover
-  line-ending and missing-final-newline changes.
-- Overview and assistant offscreen screenshots were visually inspected.
-  `git diff --check` passes.
+- `python -m unittest discover -s tests -v`: **106 tests passed**, no skips. This includes the previous 43 regressions and 63 added tests across tasks/migration, operations, development, AI, headless CLI and workspace UI.
+- Task persistence, project boundaries, state changes, record links, date validation and capacity are covered. The migration tests verify a private SQLite backup including committed WAL records, no overwrite, and unchanged legacy schema when backup publication fails.
+- Operations tests use generated snapshot/log fixtures and a real local system snapshot; no remote machine is contacted. The headless CLI runs with site packages disabled and an invalid Qt platform setting, then refuses to overwrite its output.
+- Development tests exercise bounded inventory, Python AST signals, redacted evidence, cancellation, changed-file rejection and a directory-to-symlink swap. Inspected source is never executed.
+- AI tests use actual HTTP servers bound to loopback and controlled responses, not a real Ollama model. They cover direct connections without DNS/proxies, redirects, input/output bounds, invalid JSON, cancellation, slow headers, cloud-tag rejection, and the retained evidence/hash.
+- Eight new offscreen GUI integration tests cover task persistence, explicit evidence preview, consent invalidation, model-list isolation, unverified plain-text output, real snapshot/source workers and project switching.
+- `--smoke-test` passed desktop startup, both footer labels/placement, hashing, SQLite, JSON export, tasks, system snapshot and development checks.
+- Visually inspected the rendered overview at 1200 × 850 and all four new workspaces at 960 × 700. Pages scroll vertically; the footer remains visible. These were Qt offscreen renders, not a native desktop session.
 
-**Not verified for this expansion:** real Ollama model inference or answer
-quality; native Windows/macOS behavior; new EXE/DEB installers; installed-app
-tests on Debian 13; a production security audit. No external target was scanned.
-Published 0.1.2 release verification below does not certify these new features.
+The first native preview run passed Debian installation checks and exposed Windows issues. The follow-up fixes use fresh non-following path metadata instead of Windows' zero-valued cached directory identities, close SQLite test fixture connections explicitly, hash actual CRLF file bytes, and poll response reads for portable AI cancellation/deadlines. Six new regressions cover fallback traversal/link substitution, CRLF source evidence, stalled responses, delayed reads and socket ownership. The final local suite above includes these fixes. See [Python DirEntry.stat documentation](https://docs.python.org/3.14/library/os.html#os.DirEntry.stat), checked 2026-11-15.
 
-Reproduce after installing source dependencies:
+The branch build workflow separately builds and installs Windows x64 and Debian 13 amd64 packages. Until its result is recorded, these local checks do not establish that the new installers pass. Branch builds upload CI artifacts and do not publish a 0.2.0 release automatically. The published 0.1.2 installers remain a separate version.
 
-```bash
-python -m unittest discover -s tests -v
-```
+Not verified for 0.2.0: real-model answer quality, Ollama server privacy configuration, remote server identity, continuous monitoring, macOS execution, or every Linux/Windows desktop configuration. No SSH execution, automatic remediation or tool-calling agent is implemented. The checks support a workspace preview, not a security-certification claim.
+
+### PR #4 pre-merge verification evidence
+
+Before conflict resolution, the `codex/combined-workbench-20261115` branch independently reported **90 passing tests with no skips** on Linux x86_64, Python 3.12.14 and PySide6-Essentials 6.12.0. Those checks covered the five-rule Python review, strict JSON/text utilities, the branch's Ollama fixtures and its combined-workbench GUI. They apply to the pre-merge branch, not automatically to this merged tree.
+
+The conflict resolution keeps the newer 0.2.0 workspace implementation from `main`, adds the dedicated Code review and Utilities pages, and reuses the newer workspace AI client instead of retaining a second parallel Ollama adapter. The merged state must be verified again by the repository test/workflow checks; pre-merge counts are historical evidence only.
+
 
 ## 0.1.2 release checks
 

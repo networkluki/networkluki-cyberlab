@@ -1,8 +1,8 @@
 # Security, utilities and AI in one workspace
 
-This unreleased source expansion builds on the 0.1.2 desktop app. The published
-0.1.2 installers do not include these additions. The interface remains English
-and the author/powered-by footer is unchanged.
+This guide describes the Code review and Utilities additions integrated into the
+0.2.0 workspace preview. The published 0.1.2 installers do not include these
+pages. The interface remains English and the author/powered-by footer is unchanged.
 
 ## One connected workflow
 
@@ -12,8 +12,9 @@ and the author/powered-by footer is unchanged.
    are pasted into the app; original files are not changed.
 3. Choose **Explain with AI** on a result, or select a saved result in History.
    The selected record becomes editable evidence in the AI assistant.
-4. Inspect the evidence, remove anything private, enter a question and the name
-   of an already available local Ollama model. Confirm the request before sending.
+4. Inspect the evidence, remove anything private, enter a question, load the
+   available models from the configured loopback Ollama service and select an
+   already downloaded local model. Confirm the request before sending.
 5. Review the explanation as an unverified AI interpretation. Results and their
    evidence are stored under the active project and can be exported as JSON.
 
@@ -54,27 +55,25 @@ paste secrets you do not want retained.
 
 ## Optional Ollama setup and trust
 
-Use an existing trusted Ollama service bound to `127.0.0.1:11434`, with a local
-model already installed. CyberLab does not install, download or select a model
-automatically. It does not accept arbitrary endpoint URLs, inherit HTTP proxies
-or follow redirects.
+The workspace AI page accepts only literal loopback HTTP endpoints (`127.0.0.1`
+or `[::1]`). It does not use DNS, inherited proxies or redirects. Load the model
+list explicitly and select an already downloaded local model. CyberLab does not
+install or download models.
 
-Configure the Ollama service with `OLLAMA_NO_CLOUD=1` using the service's normal
-configuration procedure before using sensitive evidence. The adapter inspects
-the model metadata and rejects reported remote models. This is a check of the
-service's response, not attestation: a modified service or a model changed after
-the check can invalidate the result. Loopback does not prove local inference.
+Configure Ollama with `OLLAMA_NO_CLOUD=1` in the service environment and restart
+it before using sensitive evidence. Cloud-tagged model names are rejected, but
+loopback and metadata checks do not attest to the backend's actual inference
+location or privacy configuration.
 
-Evidence and model responses are untrusted text. The assistant has no tool or
-command execution capability. Instructions embedded in the evidence are not
-authorized actions; generated conclusions still require independent review.
-Review consent is cleared when the request inputs change. Cancelling discards
-the result but cannot undo evidence already sent or guarantee that the service
-immediately stops inference.
+Questions are capped at 2,000 characters and evidence at 24,000 UTF-8 bytes.
+Requests have bounded connect/overall deadlines and bounded headers/body/output.
+Evidence and model responses remain untrusted text. The assistant has no command
+execution, file-write, download or remediation tool. Review consent is cleared
+when endpoint, model, question or evidence changes.
 
-The local SQLite database and exports are unencrypted. AI results retain the
-reviewed evidence, its hash, the question and the response so interpretations
-can be traced back to what was submitted. Do not treat them as verified findings.
+Successful AI results store the reviewed evidence, its hash, the question and
+response in the unencrypted local history. Do not treat model output as a
+verified finding, and remove secrets before sending.
 
 ## Primary references
 
