@@ -19,6 +19,13 @@ The branch build workflow separately builds and installs Windows x64 and Debian 
 
 Not verified for 0.2.0: real-model answer quality, Ollama server privacy configuration, remote server identity, continuous monitoring, macOS execution, or every Linux/Windows desktop configuration. No SSH execution, automatic remediation or tool-calling agent is implemented. The checks support a workspace preview, not a security-certification claim.
 
+### PR #4 pre-merge verification evidence
+
+Before conflict resolution, the `codex/combined-workbench-20261115` branch independently reported **90 passing tests with no skips** on Linux x86_64, Python 3.12.14 and PySide6-Essentials 6.12.0. Those checks covered the five-rule Python review, strict JSON/text utilities, the branch's Ollama fixtures and its combined-workbench GUI. They apply to the pre-merge branch, not automatically to this merged tree.
+
+The conflict resolution keeps the newer 0.2.0 workspace implementation from `main`, adds the dedicated Code review and Utilities pages, and reuses the newer workspace AI client instead of retaining a second parallel Ollama adapter. The merged state must be verified again by the repository test/workflow checks; pre-merge counts are historical evidence only.
+
+
 ## 0.1.2 release checks
 
 On 2026-11-14, all 41 existing tests passed locally after the footer and version changes, using Linux x86_64, Python 3.12.14 and PySide6 6.12.0. The new isolated `--smoke-test` passed, and the footer screenshot was visually inspected. A local PyInstaller 6.22.3 build also passed the packaged desktop/footer/hash/SQLite/export smoke checks.

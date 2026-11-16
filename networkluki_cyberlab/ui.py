@@ -15,23 +15,27 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
-    QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
     QWidget,
 )
 
 from .forensics import analyze_file, inspect_binary
+from .code_review import review_python
 from .network import tcp_scan, web_probe
 from .storage import Store
+from .utilities import compare_text, format_json
 from . import ai, development, operations
 from . import __version__
 
 LOGGER = logging.getLogger(__name__)
 PAGE_NAMES = ("Overview", "Network", "Web & TLS", "File forensics", "Binary analysis",
-              "History", "Daily tasks", "Servers", "Development", "AI assistant")
+              "History", "Daily tasks", "Servers", "Development", "AI assistant",
+              "Code review", "Utilities")
 MODULE_NAMES = {
     "network": "Network", "web": "Web & TLS", "forensics": "File forensics",
     "binary": "Binary analysis", "system": "Server snapshot", "logs": "Log review",
     "project": "Project inspection", "source": "Python source review", "assistant": "AI draft",
+    "code_review": "Code review", "utilities": "Utilities",
 }
 
 STYLESHEET = """
@@ -162,6 +166,7 @@ class MainWindow(QMainWindow):
         self.result_views: dict[str, QPlainTextEdit] = {}
         self.result_summaries: dict[str, QLabel] = {}
         self.export_buttons: dict[str, QPushButton] = {}
+        self.explain_buttons: dict[str, QPushButton] = {}
         self.run_buttons: list[QPushButton] = []
         self.input_widgets: list[QWidget] = []
         self.history_record: dict | None = None
@@ -236,6 +241,8 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(scrollable(self._servers_page()))
         self.pages.addWidget(scrollable(self._development_page()))
         self.pages.addWidget(scrollable(self._assistant_page()))
+        self.pages.addWidget(scrollable(self._code_review_page()))
+        self.pages.addWidget(scrollable(self._utilities_page()))
         body.addWidget(self.pages, 1)
         footer = QWidget()
         footer_layout = QHBoxLayout(footer)
@@ -313,6 +320,8 @@ class MainWindow(QMainWindow):
             ("02  /  WEB", "HTTP/TLS HEAD", "Read response headers and TLS details from a selected target.", 2),
             ("03  /  FORENSICS", "SHA-256 / SHA-512", "Calculate file hashes and record basic file information.", 3),
             ("04  /  BINARY ANALYSIS", "Strings / hex", "Inspect signatures, strings and hex without running the file.", 4),
+            ("05  /  CODE REVIEW", "Python AST review", "Find five bounded risky-code patterns without executing source.", 10),
+            ("06  /  UTILITIES", "JSON / text comparison", "Format strict JSON and compare bounded text locally.", 11),
         )
         for index, (eyebrow, title, description, destination) in enumerate(tools):
             frame, content = card()
@@ -409,6 +418,74 @@ class MainWindow(QMainWindow):
         self._result_area(module, layout)
         return page
 
+    def _code_review_page(self) -> QWidget:
+        page, layout = self._page(
+            "SECURITY / STATIC REVIEW", "Python code review",
+            "Read-only checks for risky Python constructs. Findings require human review; "
+            "an empty result does not establish that code is safe.",
+        )
+        frame, content = card()
+        content.addWidget(label("Python source · .py or .pyw · UTF-8 · up to 256 KiB", "muted", True))
+        row = QHBoxLayout()
+        self.code_path = QLineEdit()
+        self.code_path.setReadOnly(True)
+        self.code_path.setPlaceholderText("Select a Python source file…")
+        self.code_path.setAccessibleName("Python source path")
+        choose = QPushButton("Choose file…")
+        choose.clicked.connect(lambda: self.choose_file(self.code_path))
+        self.context_fields.append(self.code_path)
+        row.addWidget(self.code_path, 1)
+        row.addWidget(choose)
+        content.addLayout(row)
+        content.addWidget(self._run_button("Review Python source", self.start_code_review),
+                          0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(frame)
+        self.input_widgets.append(frame)
+        self._result_area("code_review", layout)
+        return page
+
+    def _text_input(self, placeholder: str, accessible_name: str) -> QPlainTextEdit:
+        field = QPlainTextEdit()
+        field.setPlaceholderText(placeholder)
+        field.setAccessibleName(accessible_name)
+        field.setFont(QFont("monospace", 10))
+        field.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        field.setMinimumHeight(130)
+        field.setMaximumHeight(230)
+        return field
+
+    def _utilities_page(self) -> QWidget:
+        page, layout = self._page(
+            "EVERYDAY TOOLS / LOCAL", "JSON & text utilities",
+            "Format JSON or compare two texts. Results are saved to the current project; "
+            "avoid pasting secrets you do not want in local history.",
+        )
+        tabs = QTabWidget()
+        json_page = QWidget()
+        json_layout = QVBoxLayout(json_page)
+        json_layout.addWidget(label("JSON · up to 128 KiB · nesting depth up to 64", "muted", True))
+        self.json_input = self._text_input('Paste JSON, for example {"service": "apache"}', "JSON input")
+        json_layout.addWidget(self.json_input)
+        json_layout.addWidget(self._run_button("Validate & format JSON", self.start_json),
+                              0, Qt.AlignmentFlag.AlignLeft)
+        tabs.addTab(json_page, "JSON formatter")
+        diff_page = QWidget()
+        diff_layout = QVBoxLayout(diff_page)
+        diff_layout.addWidget(label("Each text: up to 128 KiB and 1,000 lines. Output: up to 256 KiB.", "muted", True))
+        row = QHBoxLayout()
+        self.diff_before = self._text_input("Before", "Text before")
+        self.diff_after = self._text_input("After", "Text after")
+        row.addWidget(self.diff_before)
+        row.addWidget(self.diff_after)
+        diff_layout.addLayout(row)
+        diff_layout.addWidget(self._run_button("Compare text", self.start_diff),
+                              0, Qt.AlignmentFlag.AlignLeft)
+        tabs.addTab(diff_page, "Text comparison")
+        layout.addWidget(tabs)
+        self.input_widgets.append(tabs)
+        self._result_area("utilities", layout)
+        return page
+
     def _run_button(self, text: str, callback: Callable) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName("primary")
@@ -420,6 +497,17 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         row.addWidget(label("Results", "section"))
         row.addStretch()
+        if module != "assistant":
+            explain_button = QPushButton("Use in AI")
+            explain_button.setEnabled(False)
+            explain_button.clicked.connect(lambda: self.prepare_assistant(self.last_records.get(module)))
+            self.explain_buttons[module] = explain_button
+            row.addWidget(explain_button)
+        if module == "utilities":
+            self.copy_utility = QPushButton("Copy output")
+            self.copy_utility.setEnabled(False)
+            self.copy_utility.clicked.connect(self.copy_utility_output)
+            row.addWidget(self.copy_utility)
         export = QPushButton("Export JSON")
         export.setEnabled(False)
         export.clicked.connect(lambda: self.export_record(self.last_records.get(module)))
@@ -668,6 +756,12 @@ class MainWindow(QMainWindow):
             self.export_buttons[module].setEnabled(False)
         for field in self.context_fields:
             field.clear()
+        self.json_input.clear()
+        self.diff_before.clear()
+        self.diff_after.clear()
+        self.copy_utility.setEnabled(False)
+        for button in self.explain_buttons.values():
+            button.setEnabled(False)
         self.task_title.clear()
         self.task_due.clear()
         self.ai_evidence.clear()
@@ -753,7 +847,7 @@ class MainWindow(QMainWindow):
         if self.worker is not None or record is None or record.get("project") != self.project.text().strip():
             return
         module = record.get("module", "")
-        category = "server" if module in ("network", "web", "system", "logs") else "development" if module in ("project", "source", "binary") else "daily"
+        category = "server" if module in ("network", "web", "system", "logs") else "development" if module in ("project", "source", "binary", "code_review") else "daily"
         title = f"Review {MODULE_NAMES.get(module, module)} result #{record['id']}"
         try:
             self.store.add_task(record["project"], title, category, source_record_id=record["id"])
@@ -865,6 +959,45 @@ class MainWindow(QMainWindow):
             return
         self._start(module, inspect_binary if module == "binary" else analyze_file, (path,))
 
+    def start_code_review(self) -> None:
+        if not self.code_path.text():
+            show_message(self, "Choose Python source", "Choose a Python source file before starting the review.")
+            return
+        self._start("code_review", review_python, (self.code_path.text(),))
+
+    def start_json(self) -> None:
+        self._start("utilities", format_json, (self.json_input.toPlainText(),))
+
+    def start_diff(self) -> None:
+        self._start("utilities", compare_text, (self.diff_before.toPlainText(), self.diff_after.toPlainText()))
+
+    def prepare_assistant(self, record: dict | None) -> None:
+        if self.worker is not None or record is None or record.get("module") == "assistant":
+            return
+        evidence = json.dumps(record, ensure_ascii=False, indent=2)
+        if len(evidence.encode("utf-8")) > 24000:
+            show_message(self, "Choose a smaller excerpt",
+                         "This result exceeds the AI evidence limit. Copy a relevant excerpt into the AI evidence preview.",
+                         QMessageBox.Icon.Information)
+            return
+        self.ai_consent.setChecked(False)
+        self.ai_evidence.setPlainText(evidence)
+        self.ai_question.setPlainText(
+            "Explain these observations, distinguish facts from hypotheses, and suggest what I should verify next."
+        )
+        self.navigation.setCurrentRow(9)
+        self.status.setText("Review AI input")
+
+    def copy_utility_output(self) -> None:
+        record = self.last_records.get("utilities")
+        if record is None:
+            return
+        result = record["result"]
+        output = result.get("formatted", result.get("diff", ""))
+        if isinstance(output, str):
+            QApplication.clipboard().setText(output)
+            self.status.setText("Copied")
+
     def _start(self, module: str, function: Callable, arguments: tuple) -> None:
         if self.worker is not None:
             return
@@ -883,6 +1016,8 @@ class MainWindow(QMainWindow):
             self.result_views[module].clear()
             self.last_records.pop(module, None)
             self.export_buttons[module].setEnabled(False)
+            if module == "utilities":
+                self.copy_utility.setEnabled(False)
         self._set_busy(True)
         self.worker = Job(function, arguments, self)
         self.worker.succeeded.connect(self._completed)
@@ -895,7 +1030,11 @@ class MainWindow(QMainWindow):
         for widget in self.input_widgets:
             widget.setEnabled(not busy)
         self.task_toggle.setEnabled(not busy and self.task_record is not None)
-        self.history_ai.setEnabled(not busy and self.history_record is not None)
+        for module, button in self.explain_buttons.items():
+            button.setEnabled(not busy and module in self.last_records)
+        self.history_ai.setEnabled(
+            not busy and self.history_record is not None and self.history_record.get("module") != "assistant"
+        )
         self.history_task.setEnabled(not busy and self.history_record is not None)
         self.cancel_button.setEnabled(busy)
         self.status.setText("Working…" if busy else "Ready")
@@ -936,11 +1075,22 @@ class MainWindow(QMainWindow):
                 "Unverified AI draft · check its claims against the original evidence. "
                 + (f"Saved to project {self.active_project}." if saved else "Not saved; export it to keep a copy.")
             )
-        else:
-            self.result_views[module].setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
+        elif module == "utilities":
+            output = result.get("formatted", result.get("diff", ""))
+            if not output and result.get("changed") is False:
+                output = "No differences."
+            self.result_views[module].setPlainText(str(output))
+            self.copy_utility.setEnabled(True)
             self.result_summaries[module].setText(
                 f"Complete · saved to project {self.active_project}." if saved
                 else "Complete · this result is only available in this window. Export it to keep a copy."
+            )
+        else:
+            self.result_views[module].setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
+            qualifier = "Review required" if module == "code_review" and result.get("findings") else "Complete"
+            self.result_summaries[module].setText(
+                f"{qualifier} · saved to project {self.active_project}." if saved
+                else f"{qualifier} · this result is only available in this window. Export it to keep a copy."
             )
         self.export_buttons[module].setEnabled(True)
         self.refresh_history()
@@ -1003,15 +1153,16 @@ class MainWindow(QMainWindow):
         self.history.blockSignals(False)
         self.history_count.setText(f"{len(records)} results · {self.project.text().strip() or 'no project'}")
         self.stat_results.setText(str(len(records)))
-        self.stat_network.setText(str(sum(item.get("module") in ("network", "web") for item in records)))
-        self.stat_files.setText(str(sum(item.get("module") in ("forensics", "binary") for item in records)))
+        self.stat_network.setText(str(sum(item.get("module") in ("network", "web", "system", "logs", "code_review") for item in records)))
+        self.stat_files.setText(str(sum(item.get("module") in ("forensics", "binary", "project", "source", "utilities") for item in records)))
 
     def _select_history(self) -> None:
         row = self.history.currentRow()
         item = self.history.item(row, 0) if row >= 0 else None
         self.history_record = item.data(Qt.ItemDataRole.UserRole) if item else None
         self.history_export.setEnabled(self.history_record is not None)
-        self.history_ai.setEnabled(self.history_record is not None and self.worker is None)
+        self.history_ai.setEnabled(self.history_record is not None and self.worker is None
+                                   and self.history_record.get("module") != "assistant")
         self.history_task.setEnabled(self.history_record is not None and self.worker is None)
         self.history_preview.setPlainText(json.dumps(self.history_record, ensure_ascii=False, indent=2) if self.history_record else "")
 

@@ -18,6 +18,8 @@ def smoke_test(report_path: Path) -> int:
     from PySide6.QtCore import QCoreApplication, QEvent, qVersion
     from PySide6.QtWidgets import QApplication
     from .forensics import analyze_file
+    from .code_review import review_python
+    from .utilities import compare_text, format_json
     from .storage import Store
     from .ui import MainWindow
     from .operations import collect_system_snapshot
@@ -33,7 +35,7 @@ def smoke_test(report_path: Path) -> int:
             window = MainWindow(store)
             window.show()
             app.processEvents()
-            if window.pages.count() != 10 or window.worker is not None:
+            if window.pages.count() != 12 or window.worker is not None:
                 raise RuntimeError("Unexpected initial desktop state")
             if window.footer_author.text() != "Skapat av Luki Hackwell":
                 raise RuntimeError("Author footer mismatch")
@@ -61,13 +63,24 @@ def smoke_test(report_path: Path) -> int:
             script.write_text("print('packaging verification')\n", encoding="utf-8")
             inspect_project(str(root))
             inspect_source(str(script))
+            review_source = root / "review.py"
+            review_source.write_text("value = eval(user_input)\n", encoding="utf-8")
+            review = review_python(str(review_source))
+            if not review["findings"] or review["findings"][0]["status"] != "review_required":
+                raise RuntimeError("Packaged code review failed")
+            if json.loads(format_json('{"ready":true}')["formatted"]) != {"ready": True}:
+                raise RuntimeError("Packaged JSON formatting failed")
+            if not compare_text("before\n", "after\n")["changed"]:
+                raise RuntimeError("Packaged text comparison failed")
             window.close()
             window.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             window = None
             report.update({"ok": True, "qt_version": qVersion(), "platform": app.platformName(),
                            "checks": ["desktop", "footer", "hashing", "sqlite", "json_export",
-                                      "tasks", "system_snapshot", "development"]})
+                                      "tasks", "system_snapshot", "development", "code_review",
+                                      "json_formatting", "text_comparison"],
+                           "ollama_inference_tested": False})
     except Exception as exc:
         report["error"] = str(exc)
     finally:

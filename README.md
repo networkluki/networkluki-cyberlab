@@ -4,7 +4,7 @@
 
 ![NetworkLuki CyberLab overview](docs/overview.png)
 
-An open-source desktop workspace with an English interface for **daily tasks, server observations, and development review**, with an optional AI assistant. Scoped network checks, web/TLS inspection, file hashing, static binary inspection, and project-based JSON history remain available.
+An open-source desktop workspace with an English interface for **daily tasks, server observations, development review, bounded Python code review, and local JSON/text utilities**, with an optional AI assistant. Scoped network checks, web/TLS inspection, file hashing, static binary inspection, and project-based JSON history remain available.
 
 The intended desktop targets are **Windows, Linux, and macOS**, using Python and Qt for Python. This is a bounded workspace preview, not a complete penetration-testing suite or a claim of being the “most advanced” security tool. The `codex/workspace-0.2.0` branch is configured to build Windows x64 and Debian 13 amd64 installers as CI artifacts; it does not automatically publish a release. macOS remains a source-only target without platform verification. See the [verification notes](docs/VERIFICATION.md) for checks actually performed.
 
@@ -28,9 +28,11 @@ The footer displays `Skapat av Luki Hackwell` on the left and `Powered by networ
 | Daily tasks | Project checklist, optional due dates, open/done status, links to evidence records | At most 1,000 tasks per project; the table shows the latest 200; no scheduled execution or notifications |
 | Servers | On-demand local snapshot, imported server JSON, keyword-based log review | Point-in-time observations only; no SSH, agents, continuous polling, or system changes |
 | Development | Project file inventory and selected Python source review | Metadata inventory capped at 2,000 entries; Python AST triage capped at 512 KiB; no project code, tests, or build commands run |
+| Code review | Five bounded Python AST checks with source hash, locations and remediation guidance | UTF-8 `.py`/`.pyw` files up to 256 KiB; findings require review and are not confirmed vulnerabilities; source is never executed |
+| Utilities | Strict JSON validation/formatting and bounded text comparison | 128 KiB per input; duplicate JSON keys rejected; diff input capped at 1,000 lines and output at 256 KiB; no source files are modified |
 | AI assistant | Explanation of evidence explicitly reviewed and sent to an optional Ollama service | Loopback endpoint only, downloaded local model required, cloud features must be disabled; output is unverified and never executes actions |
 
-[Workspace guide](docs/WORKSPACE.md) covers the new pages, headless server collection, AI setup, and exact limits. AI integration has been checked with fixtures; inference with a real model has not been tested.
+[Workspace guide](docs/WORKSPACE.md) covers daily work, server collection, development review and AI setup. [Combined workbench guide](docs/WORKBENCH.md) documents the dedicated code-review and JSON/text utility pages and their exact limits. AI integration has been checked with fixtures; inference with a real model has not been tested.
 
 | Security module | Available behavior | Boundaries |
 | --- | --- | --- |
@@ -71,7 +73,7 @@ The Python interpreter must provide `venv` and `pip`. On Linux, Qt also needs th
 ## Use
 
 1. Set the project label to keep tasks and evidence together.
-2. Use **Daily tasks**, **Servers**, or **Development**, or select a security module for a scoped check. Network operations require confirmation that the target is within your authorized scope.
+2. Use **Daily tasks**, **Servers**, **Development**, **Code review**, or **Utilities**, or select a security module for a scoped check. Network operations require confirmation that the target is within your authorized scope.
 3. Review observations and their limitations. Completed results are stored locally in **History**.
 4. In History, **Create review task** explicitly adds a linked checklist item; it does not apply a fix. **Use in AI** copies a result into an editable preview; it does not send it.
 5. Export a selected result as JSON, or review and redact the AI preview before explicitly generating an explanation.

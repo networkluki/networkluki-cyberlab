@@ -21,6 +21,12 @@ Project inventory reads metadata only, with a 2,000-entry limit, depth limit of 
 
 Python source review accepts UTF-8 `.py`/`.pyw` files up to 512 KiB and bounds AST traversal to 30,000 nodes and 100 findings. It identifies four limited syntax patterns, documented in [WORKSPACE.md](WORKSPACE.md#development). Findings are `review_required`, not verified vulnerabilities. Evidence omits literal arguments and redacts credential-assignment values; no source line is automatically copied wholesale into a finding. This does not make arbitrary source, filenames, logs, or manually pasted AI evidence secret-free. No other source language, data-flow analysis, or complete audit is implemented.
 
+## Dedicated code review and utilities
+
+The **Code review** page is separate from the Development page's broader source triage. It accepts UTF-8 `.py`/`.pyw` regular files up to 256 KiB and checks five bounded AST rule groups: dynamic `eval`/`exec`, subprocess calls with literal `shell=True`, pickle deserialization, explicitly unverified TLS contexts, and Requests calls with literal `verify=False`. Findings include source hashes and locations but omit source snippets and string values. Every finding is `review_required`; data flow, exploitability and complete vulnerability coverage are not established. Source is never imported or executed.
+
+The **Utilities** page formats strict JSON and compares two text inputs locally. Each input is capped at 128 KiB. JSON duplicate keys and nonstandard numeric constants are rejected and nesting is limited to 64 levels. Text comparison is capped at 1,000 LF-delimited lines per input and 256 KiB of output. Utilities do not write back to source files, but successful outputs are stored in the unencrypted project history and can therefore retain sensitive pasted content.
+
 Tasks are project-scoped checklist records, with at most 1,000 tasks per project. Evidence links must refer to a result in the same project. Creating a task, completing it, or storing an AI suggestion never executes an action.
 
 ## Optional AI boundary

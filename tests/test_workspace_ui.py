@@ -63,10 +63,11 @@ class WorkspaceGuiTests(unittest.TestCase):
         return self.window.history_record
 
     def test_all_workspaces_keep_original_indices_and_footer(self):
-        self.assertEqual(self.window.pages.count(), 10)
-        self.assertEqual(tuple(self.window.navigation.item(row).text() for row in range(10)), PAGE_NAMES)
+        self.assertEqual(self.window.pages.count(), 12)
+        self.assertEqual(tuple(self.window.navigation.item(row).text() for row in range(12)), PAGE_NAMES)
         self.assertEqual(PAGE_NAMES[5], "History")
-        self.assertEqual(PAGE_NAMES[6:], ("Daily tasks", "Servers", "Development", "AI assistant"))
+        self.assertEqual(PAGE_NAMES[6:10], ("Daily tasks", "Servers", "Development", "AI assistant"))
+        self.assertEqual(PAGE_NAMES[10:], ("Code review", "Utilities"))
         self.assertEqual(self.window.footer_author.text(), "Skapat av Luki Hackwell")
         self.assertEqual(self.window.footer_powered.text(), "Powered by networkluki.com")
         self.assertIsNone(self.window.worker)
